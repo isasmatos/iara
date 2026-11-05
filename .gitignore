@@ -30,3 +30,7 @@ psds/
 
 # Ignore files
 /simula.py
+
+.DS_Store
+docs/_build/
+*.egg-info/
