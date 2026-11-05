@@ -1,0 +1,32 @@
+__pycache__/
+
+
+# Ignore folders containing simulations since they are heavy
+bbh/
+bbh2/
+bbh_bband/
+bbh_bilby/
+bilby/
+cls/
+cls_bband/
+cls_data/
+cls_matter/
+cls_matter2/
+data_bband/
+gal_glade_comp/
+gal_glade_comp_bband/
+gal_glade_comp_matter/
+gal_glade_comp_matter2/
+injections/
+matter_cls/
+matter_cls_zmax_0.5/
+new_camb/
+old_versions_gladep_lvk/
+bband_sim/
+bband_sim0/
+kband_sim/
+psds/
+3g_data/maps/
+
+# Ignore files
+/simula.py

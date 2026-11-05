@@ -1,0 +1,84 @@
+# Parameters of the simulations
+"lmax": 191 #1000 -> used for gls with DLS #300 #95 #1000 -> for computing cls and gls use much higher lmax
+"bin_edges": "/mnt/lustre2/PeakSirens/desi_legacy_project/input_files/bin_edges_x2.npy" # list or .npy file with list
+"nside": 64
+"N_sim": 10000 # Number of simulations
+"N_samples": 1000 # N of samples for distances
+"corr": null # Number of correlated matter shells (null = None in python language; if so, all shells are correlated)
+"bs" : 5 # bin size for the multipole bins
+"photoz" : null #0.015 # redshift uncertainties
+"smail": [0.7, 0.8, 2.0, 6e7] # Parameter values (z_mode, alpha, beta, Ngal) of Smail function, if dndz file is not provided
+"bgw": 1 # if different from 1, a second set of galaxy "host" catalogs will be generated
+"include_lensing" : True # for forecasts
+"multiple_surveys": True
+
+# Fiducial cosmology
+"H0": 67.36 #-> used in Sant. et al. # 70 -> used in Ferri et al. 2025
+"omch2": 0.1200 #0.1225 # little omega_c
+"ombh2": 0.02237 # 0.0245 #omb =  5*OM*h**2/30 -> used in Ferri et al. 2025
+"OM": 0.3153 # 0.3
+"As": 2.100e-9
+"ns": 0.9649 # 0.694 -> used in Ferri et al. 2025
+"tau": 0.0544
+
+# Parameters of forecasts
+"forecast" : False
+"fisher_files": "/fisher" # Path to Fisher forecasts
+
+# Set paths of simulations (relative to storage)
+"storage": "/mnt/lustre2/PeakSirens" # path to storage
+"matter_cls": "/desi_legacy_project/matter_cls_x2" # "matter_cls" #"/matter_cls_new_cosmo" # path to matter cls
+"bdir": "/desi_legacy_project/gws_blue_x2" #"/kband_sim/gws_new_cosmo2" # path to GW simulations
+"gdir": "/desi_legacy_project/gal_blue_x2" # path to galaxy simulations
+"cls_dir": "/desi_legacy_project/cls_blue_x2_subset" #"/kband_sim/cls_new_cosmo2_null" # path to cls
+
+# Paths to galaxy data files (relative to gal_dir)
+"gal_dir": "/desi_legacy_project/input_files" #"/data/kband/photoz_new/0.0033" # path to galaxy data
+"mask": "/combined_mask.npy" #"/mask_Kband_Uniformly_Weighted_zerrcut_low.npy" # path to mask file, if null just a galactic plane mask is added
+"completeness": "/completeness_blue_x2.npy" # path to completeness file
+"Nphotoz": null #"/Nphotoz_small_bar_Kband_Uniformly_Weighted_zerrcut_low.npy" # path to Nphotoz file
+"dndz": # Path to dndz file. It can be a single file, or a dictionary with variosu surveys
+  "DES": "/N_input_DES_blue_x2.txt" 
+  "DECaLS": "/N_input_DECaLS_blue_x2.txt"
+  "BASS_MzLS": "/N_input_BASS_MzLS_blue_x2.txt"
+"dndz_photoz": # paths to dndz_photoz files
+  "DES": "/photoz_kernel_DES_blue_x2.npy" 
+  "DECaLS": "/photoz_kernel_DECaLS_blue_x2.npy"
+  "BASS_MzLS": "/photoz_kernel_BASS_MzLS_blue_x2.npy" 
+"gal_map": "/Nc_ren_masked_Kband_Uniformly_Weighted_zerrcut_low.npy" # path to observed galaxy map file
+"survey_dict": "/survey_dict.yaml" # path to survey dictionary file
+"footprint_dict": 
+  "DES": "/footprint_DES_nside64.npy"
+  "DECaLS": "/footprint_DECaLS_nside64.npy"
+  "BASS_MzLS": "/footprint_BASS_MzLS_nside64.npy"
+"galaxy_bias": # paths to galaxy bias files
+  "DES": "/galaxy_bias_blue_DES_x2.npy"
+  "DECaLS": "/galaxy_bias_blue_DECaLS_x2.npy" 
+  "BASS_MzLS": "/galaxy_bias_blue_BASS_MzLS_x2.npy"
+
+# Path to GW data files
+"lvk_maps": "/desi_legacy_project/input_files/data_maps_x2_11_events" #"/data/lvk_maps/kband_0.0033" # path to LVK sky maps
+"lvk_samples": "/desi_legacy_project/input_files/data_samples" #"/data/lvk_samples/kband_0.0033" # path to LVK samples
+
+# Which steps to perform
+"compute_matter_cls" : False
+"simulate_galaxies" : False
+"simulate_gws" : False
+"compute_cls" : False
+"mcmc" : True
+
+# Parameters of the MCMC
+"chains_path" : "/desi_legacy_project/chains/blue_real_data_x2_subset_15_ells_16_25_bins_h0max_120.h5" # path of the chains files relative to storage
+"coarse_bin" : 1 # Use bins X times larger in the likelihood analysis
+"cut_bins": [1,17,5] # number of bins to remove at low D, high D, and high z
+"lbins": [2, 17] #30 # min and max ell bin for the likelihood analysis
+"cls_theory_dir": "/desi_legacy_project/cls_blue_x2_subset" # Path to theory cls
+"cls_data_dir": "/desi_legacy_project/cls_blue_x2_subset/Cl_gb_mean.npy" #"/desi_legacy_project/input_files/data_cls_x2/cl_gb.npy" # data cls (path+filename or just path if filname is cl_gb_data.npy)
+"fsky": 0.7 # sky fraction used in the likelihood analysis. Not needed if using sample covaraince.
+"n_gal": null #"/<path>.txt" # path to file with number of galaxies per redshift bin in the final maps used to produce the theory Cls
+"priors": 
+  "H0": [20, 120] # prior on H0
+  "OM": [0.1, 0.5] # prior on OM
+  "bgw": [0., 10.0] # prior on galaxy bias
+"mcmc_steps": 10000 # number of steps in the MCMC
+"mcmc_walkers": 6 # number of walkers in the MCMC
