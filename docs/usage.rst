@@ -38,7 +38,7 @@ Then, from the main folder of the repository, install IARA:
 Setting the input parameters
 ----------------------------
 
-IARA reads its settings from a YAML file in the ``inputs`` folder. You can keep
+IARA reads its settings from a YAML file, usually kept in the ``inputs`` folder. You can keep
 several input files for the different scenarios you want to analyse. Each file
 sets:
 
@@ -58,16 +58,29 @@ Run:
 
 .. code-block:: bash
 
-   python -m iara.main --input my_params.yaml
+   iara --run my_params.yaml
 
 To run in parallel, use:
 
 .. code-block:: bash
 
-   mpirun -np <ntasks> python -m iara.main --input my_params.yaml
+   mpirun -np <ntasks> iara --run my_params.yaml
 
-Give either the name of a file in the ``inputs`` folder or an absolute path.
-Without ``--input``, IARA uses ``params_dls.yaml``.
+With ``--run``, the input file is a path relative to the folder you run from,
+or an absolute path. If no such file exists, IARA looks for a file of that name
+in the ``inputs`` folder. The ``iara`` command is installed by
+``pip install -e .``; reinstall if you installed IARA before this command
+existed.
+
+The older form still works:
+
+.. code-block:: bash
+
+   python -m iara.main --input my_params.yaml
+
+With ``--input``, give either the name of a file in the ``inputs`` folder or an
+absolute path. Without ``--run`` or ``--input``, IARA uses
+``inputs/params_dls.yaml``.
 
 These commands need the editable install above, because IARA finds the
 ``inputs`` folder relative to the location of its source code.
