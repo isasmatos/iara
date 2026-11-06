@@ -1,5 +1,9 @@
 ## IARA
 
+<p align="center">
+  <img src="docs/logo.png" alt="iara logo" width="200">
+</p>
+
 IARA (*Inference from Angular cross-correlations for Redshift-peak Analysis*) is a code for cosmological parameter inference from the angular cross-correlations of localized gravitational-wave sources and galaxies. It implements the Peak Sirens method.
 
 ### Installation
