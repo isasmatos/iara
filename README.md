@@ -47,13 +47,19 @@ IARA (*Inference from Angular cross-correlations for Redshift-peak Analysis*) is
 
 3. Run:
 
-    > python -m iara.main --input <your_input_file>.yaml
+    > iara --run <your_input_file>.yaml
 
     or, for parallelization,
 
-    > mpirun -np <ntasks> python -m iara.main --input <your_input_file>.yaml
+    > mpirun -np <ntasks> iara --run <your_input_file>.yaml
 
-    Give either the name of a file in the `inputs` folder or an absolute path. Without `--input`, IARA uses `params_dls.yaml`. These commands need the editable install from the installation step, because IARA finds the `inputs` folder relative to the location of its source code.
+    With `--run`, the input file is a path relative to the folder you run from, or an absolute path; if no such file exists, IARA looks for a file of that name in the `inputs` folder. The `iara` command is installed by `pip install -e .` (reinstall if you installed IARA before this command existed).
+
+    The older form still works:
+
+    > python -m iara.main --input <your_input_file>.yaml
+
+    With `--input`, give either the name of a file in the `inputs` folder or an absolute path. Without `--run` or `--input`, IARA uses `inputs/params_dls.yaml`. These commands need the editable install from the installation step, because IARA finds the `inputs` folder relative to the location of its source code.
 
 
 ### Summary of code structure

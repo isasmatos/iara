@@ -49,9 +49,7 @@ Simulation settings
    * - ``bs``
      - Integer number of multipoles in one bin.
    * - ``bgw``
-     - GW bias w.r.t the galaxies. If it differs from 1, a second set of host galaxy catalogues is generated.
-   * - ``gw_bias``
-     - GW bias for the forecast module. See ``bgw``.
+     - GW bias w.r.t the galaxies. If it differs from 1, a second set of host galaxy catalogues is generated. It is also the fiducial GW bias of the likelihood: the theory cross-spectrum is rescaled by the sampled ``bgw`` divided by this value.
    * - ``include_lensing``
      - Whether to include lensing.
    * - ``multiple_surveys``
@@ -80,6 +78,8 @@ Fiducial cosmology
      - Scalar spectral index.
    * - ``tau``
      - Optical depth to reionization.
+   * - ``w0``, ``wa``
+     - Optional. Dark energy equation of state :math:`w(a) = w_0 + w_a(1-a)` (PPF) of the likelihood. Default: ``-1`` and ``0``. They stay fixed unless they are in ``priors``.
 
 Forecasts
 ---------
@@ -194,17 +194,23 @@ Likelihood and MCMC
      - Description
    * - ``chains_path``
      - Output file for the chains, relative to ``storage``.
+   * - ``covariance_type``
+     - ``"Fisher"`` for the Gaussian covariance from the mean spectra, or ``"sample"`` for the covariance of the simulated spectra. The sample covariance needs ``N_sim`` larger than the number of data points plus 2 (Hartlap factor). Default: ``"Fisher"`` for forecasts, ``"sample"`` otherwise.
+   * - ``galaxy_map_type``
+     - Galaxy maps of the spectra: ``"contrast"`` (density contrast, default) or ``"counts"`` (number counts). Used by ``pseudo_cls`` and the likelihood.
+   * - ``fsky``
+     - Sky fraction of the Fisher covariance. Use ``null`` to compute it from the galaxy mask; for a redshift-dependent mask, this is the mean over the galaxy bins used. Not used with the sample covariance.
    * - ``coarse_bin``
-     - Number of simulation bins combined into each likelihood bin.
+     - Number of simulation bins combined into each likelihood bin. GW counts are summed; galaxy density contrasts are averaged with the number of galaxies of each bin as weights, and counts are summed.
    * - ``cut_bins``
-     - Number of bins to remove at ``[low distance, high distance, high redshift]``.
+     - Number of likelihood bins to remove at ``[low distance, high distance, high redshift]``.
    * - ``lbins``
-     - First and last multipole bin used in the likelihood.
+     - First and last+1 multipole bin used in the likelihood. The bins are those of ``pseudo_cls``: ``bs`` multipoles each, from :math:`\ell = 2` to ``lmax``.
    * - ``cls_theory_dir``
      - Folder with the theory spectra, relative to ``storage``.
    * - ``cls_data_dir``
      - Data spectra, relative to ``storage``.
-   * - ``n_gal``
-     - Full path to a text file with the number of galaxies per redshift bin. Use ``null`` to compute it from the simulated maps.
    * - ``priors``
-     - A dictionary of uniform priors with "parameter name": ``[min, max]``, for example for ``H0``, ``OM`` and ``bgw``. Parameters not listed stay fixed at their fiducial values.
+     - A dictionary of uniform priors with "parameter name": ``[min, max]``. The parameters that can be varied are ``H0``, ``OM``, ``bgw``, ``w0`` and ``wa``. Parameters not listed stay fixed at their fiducial values. Models with ``w0 + wa >= 0`` are always excluded.
+
+The number of galaxies in each redshift bin, used to combine and move the galaxy bins, is the mean over the ``N_sim`` galaxy simulations (``gdir``, or ``gdir`` + ``_obs`` with a selection function), inside the galaxy mask.

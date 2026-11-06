@@ -273,7 +273,7 @@ def sim_gal(params, rand=False):
 
             if dndz_file==None: # smail
                 zg_i, dndzg_i = glass.shells.restrict(zb, dndz_new, ws[i])  # smail
-                ngal = np.trapzoid(dndzg_i, zg_i)
+                ngal = np.trapezoid(dndzg_i, zg_i)
 
             else:
                 if params["multiple_surveys"] == True:

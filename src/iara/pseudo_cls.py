@@ -17,6 +17,33 @@ rank = MPI.COMM_WORLD.Get_rank() # index of the task
 size = MPI.COMM_WORLD.Get_size() # total number of tasks
 barrier = MPI.COMM_WORLD.Barrier
 
+
+def galaxy_mask(params, Nbins):
+    """Galaxy mask used in the pseudo-Cls (and for the sky fraction in the likelihood).
+    Returns the mask file in gal_dir, of shape (npix,) or (Nbins, npix), or, if "mask" is null,
+    a simple galactic cut |sin(b)| > 1/3 for all bins, of shape (Nbins, npix)."""
+
+    if params['mask'] is None:
+
+        # Simple galactic cut mask
+        print("Using simple galactic cut mask")
+        f_sky_masked = 1/3
+        nside = params['nside']
+        npix = hp.nside2npix(nside)
+        lon, lat = hp.pix2ang(nside, np.arange(npix), lonlat=True)
+        vis = np.where(abs(lat) < np.arcsin(f_sky_masked)*180/np.pi, 0., 1.)
+        gmask = np.zeros(shape=(Nbins, npix))
+        gmask[:] = vis
+
+    else:
+        mask_path = params["storage"]+params["gal_dir"]+params["mask"]
+        print(mask_path)
+        gmask = np.load(mask_path)
+        print(np.shape(gmask))
+
+    return gmask
+
+
 def pseudo_cls(params, rand=False):
     
     """Computes pseudo-cls given galaxy and bbh catalogs.
@@ -30,6 +57,9 @@ def pseudo_cls(params, rand=False):
     forecast = params["forecast"]
     lvk_maps_path = storage+params["lvk_maps"]
     insert_bs = params["insert_bright_sirens"]
+    galaxy_map_type = params.get("galaxy_map_type", "contrast") # galaxy maps: "contrast" or "counts"
+    if galaxy_map_type not in ['contrast', 'counts']:
+        raise ValueError(f"galaxy_map_type must be 'contrast' or 'counts', not {galaxy_map_type}")
 
     if rand == True:
         gdir += '_rand'
@@ -64,28 +94,7 @@ def pseudo_cls(params, rand=False):
     n_bands = b.get_n_bands()
 
     # Get redshift dependent full galaxy mask
-    if params['mask'] is None:
-
-        # Simple galactic cut mask
-        print("Using simple galactic cut mask")
-        f_sky_masked = 1/3
-        npix = hp.nside2npix(nside)
-        vis = np.zeros(npix)
-        for i in range(len(vis)):
-            lon, lat = hp.pix2ang(nside,i,lonlat=True)
-
-            if(abs(lat) < np.arcsin(f_sky_masked)*180/np.pi):
-                vis[i] = 0
-            else:
-                vis[i] = 1
-        gmask = np.zeros(shape=(Nbins, npix))
-        gmask[:] = vis
-
-    else:
-        mask_path = gal_dir+params["mask"]
-        print(mask_path)
-        gmask = np.load(mask_path)
-        print(np.shape(gmask))
+    gmask = galaxy_mask(params, Nbins)
 
     bmask=nmt.NmtField(np.ones(npix), None, spin=0, lmax=lmax_cls, masked_on_input=False)
 
@@ -187,9 +196,10 @@ def pseudo_cls(params, rand=False):
 
             mask_data = gmask if redshift_independent_mask else gmask[i, :]
             map_masked = gal_count_map[i] * mask_data
-            # If we want to use density contrast for galaxies (if you want counts instead, comment it out)
-            ngal = np.average(map_masked[mask_data>0])
-            map_masked = mask_data * (map_masked - ngal)/ngal
+            # Density contrast of the galaxies, or number counts with galaxy_map_type: "counts"
+            if galaxy_map_type == 'contrast':
+                ngal = np.average(map_masked[mask_data>0])
+                map_masked = mask_data * (map_masked - ngal)/ngal
 
             alm_g[i] = hp.map2alm(map_masked,lmax=lmax_cls)
             alm_b[i] = hp.map2alm(bh_count_map[i], lmax=lmax_cls) 

@@ -1,11 +1,11 @@
 # Example: LVK O5 forecast cross-correlated with simulated galaxies (parameters of the code at commit e559b71)
 #
-# Run from this folder (storage = "." is the folder iara is run from), giving the absolute path of this file:
+# Run from this folder (storage = "." is the folder iara is run from):
 #   cd examples/lvkO5_forecast
-#   python ../../src/iara/main.py --input $PWD/script_old.yaml
+#   mpirun -np 8 iara --run script_old.yaml
 #
 # Pipeline: matter Cls -> galaxy simulations -> forecast GW maps -> pseudo-Cls -> MCMC.
-# The outputs are stored in script_old_output/ (forecast GW maps and Cls in a subfolder named after "det").
+# The outputs are stored in script_old_output/.
 
 # Which steps to perform
 "compute_matter_cls" : True
@@ -36,10 +36,11 @@
 "As": 2.100e-9
 "ns": 0.9649
 "tau": 0.0544
+"w0": -1.0 # dark energy w(a) = w0 + wa*(1-a) (PPF): fiducial values, fixed in the MCMC unless they are in the priors
+"wa": 0.0
 
 # Parameters of forecasts
 "forecast" : True
-"det": "lvkO5" # name of the subfolder of the forecast GW maps and Cls
 "detector_forecast": "/inputs/lvkO5_old.txt" # forecast catalog (relative to storage), with columns z Dl ra dec err_Dl err_area90
 "forecast_distance_unit": "Gpc" # unit of Dl and err_Dl in lvkO5_old.txt
 "forecast_sky_selection": "ra_averaged" # the ra of the catalog is an Earth-fixed azimuth: only declinations are used
@@ -59,6 +60,7 @@
 # Galaxy survey: Smail distribution over the full sky (no input files)
 "gal_dir": "/galaxy_inputs" # path to galaxy data files (not used)
 "dndz": null # null = Smail distribution
+"smail": [0.7, 0.8, 2.0, 6.0e+7] # (z_mode, alpha, beta, Ngal) of the Smail distribution
 "multiple_surveys": False
 "mask": null # null = simple galactic cut in the pseudo-Cls
 "completeness": null # null = no selection function
@@ -71,11 +73,18 @@
 # The forecast likelihood uses the mean Cls of the simulations both as theory and as data.
 "cls_theory_dir": "/script_old_output/cls" # mean Cls used as theory (relative to storage)
 "cls_data_dir": "/script_old_output/cls" # mean Cls used as data (relative to storage)
-"n_gal": null # null = number of galaxies per bin from gal_count_map1.npy
+"covariance_type": "Fisher" # "Fisher" (Gaussian covariance from the mean Cls) or "sample" (needs N_sim > number of data points + 2)
+"galaxy_map_type": "contrast" # galaxy maps used in the Cls: "contrast" or "counts"
+"fsky": null # sky fraction of the Fisher covariance; null = from the galaxy mask (here the galactic cut, 2/3)
 "cut_bins": [0, 0, 0] # number of likelihood bins removed: [low distance, high distance, high redshift]
 "coarse_bin": 1 # number of simulation bins combined in each likelihood bin
 "lbins": [1, 20] # first and last+1 multipole bands used (bands of size bs from ell = 2)
 "priors": # uniform priors; parameters not listed are fixed at their fiducial values
   "H0": [20, 140]
   "OM": [0.1, 0.5]
+  "bgw": [0.0, 10.0]
+  # "w0": [-2.0, 0.0] # uncomment to vary w0
+  # "wa": [-3.0, 2.0] # uncomment to vary wa (w0 + wa >= 0 is always excluded)
 "chains_path": "/script_old_output/chains/lvkO5.h5" # MCMC chains (relative to storage)
+"mcmc_steps": 5000 # number of steps of each walker
+"mcmc_walkers": 6 # number of walkers

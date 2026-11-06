@@ -8,6 +8,7 @@ import camb
 from matplotlib import rcParams
 import warnings
 from scipy.interpolate import interp1d, CubicSpline
+from iara.pseudo_cls import galaxy_mask
 
 
 rcParams['mathtext.fontset'] = 'stix'
@@ -34,7 +35,11 @@ class global_parameters(object):
         self.As = params['As']
         self.ns = params['ns']
         self.tau = params['tau']
-        self.bgw = params['bgw']
+        self.bgw = params['bgw'] # GW bias of the simulations: the theory Cl_gb is rescaled by bgw/self.bgw
+        if not self.bgw > 0:
+            raise ValueError(f"bgw must be positive, not {self.bgw}")
+        self.w0 = params.get('w0', -1.) # dark energy equation of state w(a) = w0 + wa*(1-a) (PPF),
+        self.wa = params.get('wa', 0.)  # fixed at these values unless they are in the priors
 
         pars = camb.set_params(H0=self.H0, omch2=self.omch2, ombh2=self.ombh2,As=self.As,ns=self.ns,tau=self.tau,
                             NonLinear=camb.model.NonLinear_both)
@@ -59,25 +64,38 @@ class global_parameters(object):
         self.zmax = self.zb[-1]
         self.dz = self.zb[1]-self.zb[0] # deprecated
 
-        # 2) Binning of likelihood (now necessarily the same as the one of simulations)
-        self.cuts = params['cut_bins']
+        # 2) Binning of likelihood: each likelihood bin combines coarse_bin consecutive simulation bins
+        #    (the last one takes the remaining bins if Nbins is not a multiple of coarse_bin),
+        #    both for galaxies (redshift) and GWs (fiducial luminosity distance). See aggregation_matrix.
+        self.cuts = params['cut_bins'] # cuts in likelihood bins
         self.lower_cut, self.upper_cut, self.z_cut = self.cuts
-        coarse_factor = params['coarse_bin']
+        self.coarse_bin = params.get('coarse_bin') or 1
+        if int(self.coarse_bin) != self.coarse_bin or self.coarse_bin < 1:
+            raise ValueError(f"coarse_bin must be a positive integer, not {self.coarse_bin}")
+        self.coarse_bin = int(self.coarse_bin)
+        edges_idx = np.arange(0, self.Nbins+1, self.coarse_bin)
+        if edges_idx[-1] != self.Nbins:
+            edges_idx = np.append(edges_idx, self.Nbins)
+        if len(edges_idx) < 3:
+            raise ValueError(f"coarse_bin = {self.coarse_bin} leaves fewer than 2 likelihood bins out of {self.Nbins} simulation bins")
+        self.thin_to_coarse = np.digitize(np.arange(self.Nbins), edges_idx) - 1 # likelihood bin of each simulation bin
         self.zmin = 0
-        # z bin edges for likelihood ---> change this array to change the binning
-        self.gal_zs2 = self.zb #np.linspace(self.zmin, self.zmax, self.bh_bins+1) #uniform gal redshift bin edges
+        # z bin edges for likelihood
+        self.gal_zs2 = self.zb[edges_idx]
         self.gal_bins = len(self.gal_zs2)-1 # number of galaxy bins before cutting
         self.bh_bins = len(self.gal_zs2)-1 # number of bbh bins before cutting
         self.gbins = self.gal_bins-self.z_cut
         self.bbins = self.bh_bins-self.upper_cut-self.lower_cut
+        if self.gbins < 1 or self.bbins < 1:
+            raise ValueError(f"cut_bins = {self.cuts} removes all of the {self.gal_bins} likelihood bins")
         # D bins defined by the fiducial model
         self.fid_D = self.camb_back.luminosity_distance(self.gal_zs2)
 
-        # Parameters for the multipole binning
+        # Parameters for the multipole binning (same as in pseudo_cls.py)
         self.nside = params['nside']
         self.lmax = params['lmax']
-        self.lmax_cls = self.lmax-1
-        self.bs = 5 # bandwidth used for pseudo-cls
+        self.lmax_cls = self.lmax
+        self.bs = params['bs'] # bandwidth used for pseudo-cls
         b = nmt.NmtBin.from_lmax_linear(self.lmax_cls, self.bs)
         self.lbvec = b.get_effective_ells()
         self.lbmax = b.get_effective_ells().size
@@ -86,22 +104,66 @@ class global_parameters(object):
 
         # Other parameters of the MCMC
         self.N_sim = params['N_sim'] # number of simulations
-        self.fsky = params['fsky']
         self.forecast = params["forecast"]
         self.cls_th_dir = f'{self.storage}{params["cls_theory_dir"]}' # path to theory cls
         self.cls_data_dir = f'{self.storage}{params["cls_data_dir"]}' # path to data cls
         self.cls_th_dir_rand = f'{self.storage}{params["cls_theory_dir"]}_rand' # path to cls of randoms
-                
+
+        # Covariance of the Cls: "Fisher" (Gaussian, from the mean Cls; class likelihood)
+        # or "sample" (from the simulations; class likelihood_real_data)
+        self.covariance_type = params.get('covariance_type') or ('Fisher' if self.forecast else 'sample')
+        if self.covariance_type.lower() not in ['fisher', 'sample']:
+            raise ValueError(f"covariance_type must be 'Fisher' or 'sample', not {self.covariance_type}")
+        self.covariance_type = 'Fisher' if self.covariance_type.lower() == 'fisher' else 'sample'
+
+        # Galaxy maps used in the Cls (see pseudo_cls.py): density contrast or number counts
+        self.galaxy_map_type = params.get('galaxy_map_type', 'contrast')
+        if self.galaxy_map_type not in ['contrast', 'counts']:
+            raise ValueError(f"galaxy_map_type must be 'contrast' or 'counts', not {self.galaxy_map_type}")
+
         # which parameters to vary in the MCMC
         self.priors = params['priors']
         self.varied_params = list(self.priors.keys())
+        allowed = ['H0', 'OM', 'bgw', 'w0', 'wa']
+        unknown = [name for name in self.varied_params if name not in allowed]
+        if unknown:
+            raise ValueError(f"Unknown parameters in priors: {unknown}. The parameters that can be varied are {allowed}")
+        for name, bounds in self.priors.items():
+            if len(bounds) != 2 or not bounds[0] < bounds[1]:
+                raise ValueError(f"The prior of {name} must be [min, max] with min < max, not {bounds}")
 
-        if params['n_gal'] is not None:
-            self.ng = np.genfromtxt(params['n_gal']) # average number of galaxies in each bin, for fiducial Cl
+        # Galaxy mask of the pseudo-Cls, of shape (npix,) or (Nbins, npix)
+        gmask = galaxy_mask(params, self.Nbins)
+        gmask_bins = np.broadcast_to(gmask, (self.Nbins, gmask.shape[-1])) if gmask.ndim == 1 else gmask[:self.Nbins]
+
+        # Number of galaxies in each simulation bin, averaged over the galaxy simulations used in the Cls
+        # (the observed maps, {gdir}_obs, if a selection function is applied). As in pseudo_cls.py, it is
+        # the mean count per pixel inside the mask of the bin (times npix), so it gives the relative weight
+        # of each bin in the galaxy density contrast of a merged bin.
+        gdir = f'{self.storage}{params["gdir"]}'
+        if params['completeness'] is not None or params['Nphotoz'] is not None:
+            gdir += '_obs'
+        ng_sims = []
+        for k in range(self.N_sim):
+            if os.path.isfile(f'{gdir}/gal_count_map{k+1}.npy'):
+                g_map = np.load(f'{gdir}/gal_count_map{k+1}.npy')[:self.Nbins]
+                area = np.sum(gmask_bins, axis=1)
+                ng_sims.append(np.divide(np.sum(g_map*gmask_bins, axis=1), area, out=np.zeros(self.Nbins), where=area > 0)*gmask_bins.shape[1])
+        if not ng_sims:
+            raise FileNotFoundError(f"No galaxy count maps gal_count_map{{k}}.npy in {gdir}, needed for the number of galaxies per bin")
+        self.ng = np.mean(ng_sims, axis=0)
+        print(f"Number of galaxies per bin: mean over {len(ng_sims)} simulations in {gdir}")
+
+        # Sky fraction of the Fisher (Gaussian) covariance, which reduces the number of modes. By default it
+        # is the observed fraction of the galaxy mask; for a redshift-dependent mask, an effective value:
+        # the mean of the sky fractions of the simulation bins of the galaxy bins used in the likelihood.
+        if params.get('fsky') is not None:
+            self.f_sky = float(params['fsky'])
         else:
-            warnings.warn("Loading n_gal from simulated maps. If you have a selection function, consider providing n_gal path in the .yaml input file" ,category=UserWarning, stacklevel=2)
-            g_map = np.load(f'{self.storage}{params["gdir"]}/gal_count_map1.npy')
-            self.ng = np.sum(g_map, axis=1) # sum over pixels in each redshift bin
+            used = np.flatnonzero(self.thin_to_coarse < self.gbins)
+            self.f_sky = float(np.mean(gmask_bins[used]))
+        if not 0 < self.f_sky <= 1:
+            raise ValueError(f"The sky fraction must be in (0, 1], not {self.f_sky}")
 
 
     def mask_h0_prior(self, cl_gb, h0min=None, h0max=None):
@@ -165,104 +227,53 @@ class global_parameters(object):
         return full_cl
     
 
+    def aggregation_matrix(self, tracer):
+        """Matrix A (likelihood bins x simulation bins) that combines the Cls of the simulation bins into
+        those of the likelihood bins: Cl_likelihood = A_1 Cl_simulation A_2^T for each multipole.
+            tracer = 'gal': galaxy maps. Density contrasts are averaged with weights N_i/N_I (number of
+                            galaxies of the simulation bin over that of the likelihood bin), which is exact
+                            for the density contrast of the merged bin; counts are summed.
+            tracer = 'gw': GW count maps, which are summed."""
+
+        A = np.zeros((self.gal_bins, self.Nbins))
+        A[self.thin_to_coarse, np.arange(self.Nbins)] = 1.
+
+        if tracer == 'gal' and self.galaxy_map_type == 'contrast':
+            A = A*self.ng[None, :]
+            norm = np.sum(A, axis=1, keepdims=True)
+            A = np.divide(A, norm, out=np.zeros_like(A), where=norm > 0)
+
+        return A
+
+
     def rebinning_Cl(self, CL, type='zz'):
 
-        """This function is used to rebin Cl matrices without cosmology dependence,
-        according to the binning we want for the likelihood anlaysis.
-        
+        """Combines Cl matrices of the simulation bins into the likelihood bins (see coarse_bin), without
+        cosmology dependence. The distance bins of the GWs are the fiducial luminosity distances of the
+        redshift bins.
+
         Args:
-            CL ('array') : The original 3D C_l(z,z') matrix from where you'll obtain another C_l. 
-            
-            type ('string') : the possible types of C_l are: 'zz' or 'DfidDfid'.
-                    'zz' corresponds to a reshaped version of your original C_l(z,z') into a matrix of shape
-                    (lmax,gal_bins,gal_bins). 
-                    'DfidDfid' corresponds to a C_l(D,D) where D are luminosity distance bins equivalent to (zmin,zmax)
-                    in your fiducial model, and the transformation z->D is done in the fiducial cosmology.
+            CL ('array') : Cl matrix of the simulation bins, of shape (n_ell, Nbins, Nbins).
+
+            type ('string') : 'zz' for galaxy auto-Cls, 'DfidDfid' for GW auto-Cls,
+                              'zDfid' for galaxy-GW cross-Cls.
         """
 
-        new_D = self.D_zb
-        gal_idx = np.array([bisect.bisect_right(self.zb, z)-1 for z in self.gal_zs2]) # how many thin bins fit in thick bins
+        A_gal, A_gw = self.aggregation_matrix('gal'), self.aggregation_matrix('gw')
+        A1, A2 = {'zz': (A_gal, A_gal), 'DfidDfid': (A_gw, A_gw), 'zDfid': (A_gal, A_gw)}[type]
 
-        if type=='zz':
-            matrix_bin2 = np.zeros(shape=(CL.shape[0], self.gal_bins, self.gal_bins), dtype = 'float32')     # final matrix after z and z' binning
-            matrix_bin1 = np.zeros(shape=(CL.shape[0], CL.shape[1], self.gal_bins), dtype = 'float32')  # matrix after z' binning
-            sub = 0
-            for i in range(1,len(gal_idx)-1):
-                exceed = (-self.zb[gal_idx[i]] + self.gal_zs2[i])/(self.zb[gal_idx[i]+1]-self.zb[gal_idx[i]]) * CL[:,:,gal_idx[i]]
-                matrix_bin1[:,:,i-1] = np.sum(CL[:,:,gal_idx[i-1]:gal_idx[i]], axis=2) + exceed - sub
-                sub = exceed
-            matrix_bin1[:,:,i] = np.sum(CL[:,:,gal_idx[i]:gal_idx[i+1]],axis=2)
-            sub = 0
-            for i in range(1,len(gal_idx)-1):
-                exceed = (-self.zb[gal_idx[i]]+self.gal_zs2[i])/(self.zb[gal_idx[i]+1]-self.zb[gal_idx[i]]) * matrix_bin1[:,gal_idx[i],:]
-                matrix_bin2[:,i-1,:] = np.sum(matrix_bin1[:,gal_idx[i-1]:gal_idx[i],:],axis=1) + exceed - sub
-                sub = exceed
-            matrix_bin2[:,i,:] = np.sum(matrix_bin1[:,gal_idx[i]:gal_idx[i+1],:],axis=1)
-
-            return np.real(matrix_bin2)
-
-        if type=='DfidDfid':
-            D_idx = np.array([bisect.bisect_right(new_D, d)-1 for d in self.fid_D])#how many thin new D bins fit inside the fiducial cosmology 'bh_bins' D bins
-            if np.max(D_idx)==(len(self.zb)-1):
-                D_idx=D_idx[D_idx<(len(self.zb)-1)]
-                D_idx=np.append(D_idx,[(len(self.zb)-1)])
-            else:
-                D_idx=D_idx[D_idx<(len(self.zb)-1)]
-            matrix_bin1 = np.zeros(shape=(CL.shape[0],CL.shape[1], self.bh_bins), dtype = 'float32')  # matrix after fiducial D binning
-            matrix_bin2 = np.zeros(shape=(CL.shape[0],self.bh_bins, self.bh_bins), dtype = 'float32') # matrix after z binning
-            sub = 0
-            for i in range(1,len(D_idx)-1):
-                exceed = ((self.fid_D[i]-new_D[D_idx[i]] )/(new_D[D_idx[i]+1]-new_D[D_idx[i]])) * CL[:,:,D_idx[i]]
-                matrix_bin1[:,:,i-1] = np.sum(CL[:,:,D_idx[i-1]:D_idx[i]], axis=2) + exceed - sub
-                sub = exceed
-            matrix_bin1[:,:,i] = np.sum(CL[:,:,D_idx[i]:D_idx[i+1]], axis=2)
-            sub = 0
-            for i in range(1,len(D_idx)-1):
-                exceed = ((self.fid_D[i]-new_D[D_idx[i]] )/(new_D[D_idx[i]+1]-new_D[D_idx[i]])) * matrix_bin1[:,D_idx[i],:]
-                matrix_bin2[:,i-1,:] = np.sum(matrix_bin1[:,D_idx[i-1]:D_idx[i],:],axis=1) + exceed - sub
-                sub = exceed
-            matrix_bin2[:,i,:] = np.sum(matrix_bin1[:,D_idx[i]:D_idx[i+1],:],axis=1)
-
-            return np.real(matrix_bin2)
-        
-        if type=='zDfid':
-
-            #### new distance bin edges ####
-            D_idx = np.array([bisect.bisect_right(new_D, d)-1 for d in self.fid_D])#how many thin new D bins fit inside the fiducial cosmology 'bh_bins' D bins
-            if np.max(D_idx)==(len(self.zb)-1):
-                D_idx=D_idx[D_idx<(len(self.zb)-1)]
-                D_idx=np.append(D_idx,[(len(self.zb)-1)])
-            else:
-                D_idx=D_idx[D_idx<(len(self.zb)-1)]
-            matrix_bin1 = np.zeros(shape=(CL.shape[0],CL.shape[1], self.bh_bins), dtype = 'float32')  # matrix after fiducial D binning
-            matrix_bin2 = np.zeros(shape=(CL.shape[0],self.gal_bins, self.bh_bins), dtype = 'float32') # matrix after z binning
-            sub = 0
-            # Rebinning for BBH bins
-            for i in range(1,len(D_idx)-1):
-                exceed = ((self.fid_D[i]-new_D[D_idx[i]] )/(new_D[D_idx[i]+1]-new_D[D_idx[i]])) * CL[:,:,D_idx[i]]
-                matrix_bin1[:,:,i-1] = np.sum(CL[:,:,D_idx[i-1]:D_idx[i]], axis=2) + exceed - sub
-                sub = exceed
-                #print(new_D[D_idx[i]])
-            matrix_bin1[:,:,i] = np.sum(CL[:,:,D_idx[i]:D_idx[i+1]], axis=2)
-            sub = 0
-            # Rebinning for galaxy bins
-            for i in range(1,len(gal_idx)-1):
-                exceed = ((-self.zb[gal_idx[i]]+self.gal_zs2[i])/(self.zb[gal_idx[i]+1]-self.zb[gal_idx[i]])) * matrix_bin1[:,gal_idx[i],:]
-                matrix_bin2[:,i-1,:] = np.sum(matrix_bin1[:,gal_idx[i-1]:gal_idx[i],:],axis=1) + exceed - sub
-                sub = exceed
-            matrix_bin2[:,i,:] = np.sum(matrix_bin1[:,gal_idx[i]:gal_idx[i+1],:],axis=1)
-
-            return np.real(matrix_bin2)
+        return np.real(np.einsum('ai,lij,bj->lab', A1, CL[:, :self.Nbins, :self.Nbins], A2)).astype('float32')
 
 
 class likelihood_real_data(object):
+    """Likelihood with the sample covariance of the simulated Cls (covariance_type: "sample")."""
 
     def __init__(self, par, samp_cov, theory, data, reuse_inv_cov=False):
 
         self.params = par
         self.theory = theory
         self.Cl_gb_fid = theory.cl_fid
-        self.Cl_gb_data = data.data_cls(data_type='data')
+        self.Cl_gb_data = data.data_cls() # mean Cls of the simulations in forecasts, data otherwise
         self.cov, self.Nsim_eff = samp_cov.cov()
         print("Computed sample covariance")
 
@@ -280,12 +291,12 @@ class likelihood_real_data(object):
         #self.cuts_bs = [3,7] # intermediate distance bins to remove (because they have no GWs)
         # Use cuts_bs = [1,1] for incld. all intermediate dl bins
 
-    def chi2(self, h0, om, bgw):
+    def chi2(self, h0, om, bgw, w0=-1., wa=0.):
         
         """Chi squared using sample covariance. Version of Santiago de Matos et al. 2025."""
 
         # New theoretical Cl_gb
-        Cl_gb_theory = self.theory.new_Cl(self.Cl_gb_fid, h0, om)
+        Cl_gb_theory = self.theory.new_Cl(self.Cl_gb_fid, h0, om, w0, wa)
         
         # Cuts in distance and redshift
         Nbins = Cl_gb_theory.shape[1] # Redefining number of bins after rebinning
@@ -297,7 +308,8 @@ class likelihood_real_data(object):
         #cuts_idx_dl = np.r_[cuts[0]:self.cuts_bs[0], self.cuts_bs[1]:Nbins-cuts[1]] # for removing intermediate bins
         cuts_idx_dl = np.r_[cuts[0]:Nbins-cuts[1]]
 
-        Cl_gb_theory = bgw*Cl_gb_theory[self.params.lb_idx_min:self.params.lb_idx_max,cuts_idx_z[:, None],cuts_idx_dl]
+        # The simulated Cl_gb already has the GW bias of the simulations, params.bgw
+        Cl_gb_theory = (bgw/self.params.bgw)*Cl_gb_theory[self.params.lb_idx_min:self.params.lb_idx_max,cuts_idx_z[:, None],cuts_idx_dl]
 
         # Get cross-spectrum only
         Cl_data = self.Cl_gb_data[:, :self.params.gbins, self.params.gbins:]
@@ -315,7 +327,7 @@ class likelihood_real_data(object):
         h   = pars["H0"]
         om  = pars["OM"]
         bgw = pars["bgw"]
-        chi = self.params.bs*self.chi2(h, om, bgw)
+        chi = self.params.bs*self.chi2(h, om, bgw, pars["w0"], pars["wa"])
         
         if remove_small_scale_residual:
             chi_smallest_ells = np.average(chi[:-15])
@@ -326,17 +338,21 @@ class likelihood_real_data(object):
 
 
     def log_prior(self, th_args):
-        """Uniform priors on all varied parameters.
+        """Uniform priors on all varied parameters, excluding w0 + wa >= 0
+        (dark energy with w >= 0 at high redshift, which CAMB cannot compute).
         For ET+2CE, use for (h0, om), mins = 65, 0.1, maxs = 75, 0.5
         For LVK O5, use mins = 40, 0.05, maxs = 100, 0.95"""
 
         for name, value in zip(self.params.varied_params, th_args):
 
             pmin, pmax = self.params.priors[name]
-            print(pmin, pmax, value)
 
             if not (pmin < value < pmax):
                 return -np.inf
+
+        values = dict(zip(self.params.varied_params, th_args))
+        if values.get('w0', self.params.w0) + values.get('wa', self.params.wa) >= 0:
+            return -np.inf
 
         return 0.0
 
@@ -347,6 +363,8 @@ class likelihood_real_data(object):
             "H0": self.params.H0,
             "OM": self.params.OM,
             "bgw": self.params.bgw,
+            "w0": self.params.w0,
+            "wa": self.params.wa,
         }
 
         for name, value in zip(self.params.varied_params, th_args):
@@ -401,14 +419,15 @@ class sample_covariance(object):
         # Get Cls from each simulation
         sims = os.listdir(self.params.cls_th_dir)
 
-        cell = np.zeros((self.params.N_sim, ((self.params.Nbins)**2)*(self.params.lb_idx_max-self.params.lb_idx_min)))
-        print(np.shape(cell))
-        print(self.params.N_sim)
+        # Cls of each simulation in the likelihood bins (see coarse_bin)
+        rebin_type = {'Cls_gb': 'zDfid', 'Cls_gg': 'zz', 'Cls_bb': 'DfidDfid'}[type]
+        cell = np.zeros((self.params.N_sim, self.params.gal_bins*self.params.bh_bins*(self.params.lb_idx_max-self.params.lb_idx_min)))
 
         for k in range(self.params.N_sim):
 
             if type+f'{k+1}.npy' in sims:
-                data = np.load(f'{self.params.cls_th_dir}/{type}{k+1}.npy')[self.params.lb_idx_min:self.params.lb_idx_max,:,:] # shape = (Nlb, Nbins_thin, Nbins_thick)
+                data = np.load(f'{self.params.cls_th_dir}/{type}{k+1}.npy')[self.params.lb_idx_min:self.params.lb_idx_max,:,:] # shape = (Nlb, Nbins, Nbins)
+                data = self.params.rebinning_Cl(data, type=rebin_type) # shape = (Nlb, gal_bins, bh_bins)
                 cell[k] = data.flatten()
 
         cell = cell[~np.all(cell == 0, axis=1)] # remove rows without any simulation
@@ -451,13 +470,15 @@ class sample_covariance(object):
             Cinv_full[np.ix_(inds, inds)] = inv_cov_2d
             inv_cov_2d = np.copy(Cinv_full)
 
-        # Hartlap correction
+        # Hartlap correction (np.cov normalises by Nsim-1); it needs more simulations than data points
         Ndof = cov_2d.shape[0] # number of degrees of freedom
 
-        if Nsim < Ndof+3:
-            warnings.warn(f'Less simulations than degrees of freedom: problem with Hartlap factor',category=UserWarning, stacklevel=2)
+        if Nsim <= Ndof+2:
+            raise ValueError(f"The sample covariance of {Ndof} data points needs N_sim > {Ndof+2} simulations, "
+                             f"but there are {Nsim}. Use more simulations, fewer bins (cut_bins, coarse_bin) "
+                             "or multipoles (lbins), or covariance_type: 'Fisher'.")
         
-        inv_cov_2d = ((Nsim-Ndof-2)/Nsim)*inv_cov_2d
+        inv_cov_2d = ((Nsim-Ndof-2)/(Nsim-1))*inv_cov_2d
 
         # Effective DOF
         if Neff==True:
@@ -473,6 +494,7 @@ class sample_covariance(object):
 
 
 class likelihood(object):
+    """Gaussian likelihood with the Fisher covariance from the mean Cls (covariance_type: "Fisher")."""
 
     def __init__(self, par, inv_cov, theory, data):
 
@@ -486,16 +508,18 @@ class likelihood(object):
         # If you want to vary them with cosmology, they should be computed inside chi2  
         self.fiducial_norm, self.fiducial_inv_corr, self.fiducial_corr, self.Gl_full_nonorm = inv_cov.compute_inv_corr(self.params.bgw, self.params.H0, self.params.OM)
 
-    def chi2(self, h0, om, bgw):
+    def chi2(self, h0, om, bgw, w0=-1., wa=0.):
     
-        """Chi squared version of Ferri et. al, i.e. assuming Gaussian fields."""
+        """Chi squared version of Ferri et. al, i.e. assuming Gaussian fields.
+        The number of modes in each multipole band is f_sky*(2l+1)*bs."""
         
         # Create a zero matrix Lx100x100 to use as theoretical Cl_gg and cl_bb components
         gg_mask=np.zeros(shape=(self.params.lbmax,self.params.gal_bins,self.params.gal_bins))
         bb_mask=np.zeros(shape=(self.params.lbmax,self.params.bh_bins,self.params.bh_bins))
         
         # New theoretical Cl_gb
-        Cl_gb_theory = bgw*self.theory.new_Cl(self.Cl_gb_fid, h0, om)
+        # The simulated Cl_gb already has the GW bias of the simulations, params.bgw
+        Cl_gb_theory = (bgw/self.params.bgw)*self.theory.new_Cl(self.Cl_gb_fid, h0, om, w0, wa)
 
         # H0 prior mask can be applied inside stack_Cls
         
@@ -530,7 +554,7 @@ class likelihood(object):
             
             t1a = np.trace(CtDCdotD)
             t1b = np.trace(DtCdotDtC)
-            T1[i]  = (2*ell+1) * self.params.bs * (t1a + t1b)
+            T1[i]  = self.params.f_sky * (2*ell+1) * self.params.bs * (t1a + t1b)
 
         return T1 # Array of chi2(ell)
 
@@ -540,7 +564,7 @@ class likelihood(object):
         h   = pars["H0"]
         om  = pars["OM"]
         bgw = pars["bgw"]
-        chi = self.chi2(h, om, bgw)
+        chi = self.chi2(h, om, bgw, pars["w0"], pars["wa"])
         
         if remove_small_scale_residual:
             chi_smallest_ells = np.average(chi[:-15])
@@ -550,17 +574,21 @@ class likelihood(object):
         return -0.5 * np.sum(chi)
 
     def log_prior(self, th_args):
-        """Uniform priors on all varied parameters.
+        """Uniform priors on all varied parameters, excluding w0 + wa >= 0
+        (dark energy with w >= 0 at high redshift, which CAMB cannot compute).
         For ET+2CE, use for (h0, om), mins = 65, 0.1, maxs = 75, 0.5
         For LVK O5, use mins = 40, 0.05, maxs = 100, 0.95"""
 
         for name, value in zip(self.params.varied_params, th_args):
 
             pmin, pmax = self.params.priors[name]
-            print(pmin, pmax, value)
 
             if not (pmin < value < pmax):
                 return -np.inf
+
+        values = dict(zip(self.params.varied_params, th_args))
+        if values.get('w0', self.params.w0) + values.get('wa', self.params.wa) >= 0:
+            return -np.inf
 
         return 0.0
 
@@ -571,6 +599,8 @@ class likelihood(object):
             "H0": self.params.H0,
             "OM": self.params.OM,
             "bgw": self.params.bgw,
+            "w0": self.params.w0,
+            "wa": self.params.wa,
         }
 
         for name, value in zip(self.params.varied_params, th_args):
@@ -657,7 +687,7 @@ class inverse_covariance(object):
 
         # Creating the theoretical Gl, Norm (from Gl) and Inv_Corr (from Gl) matrices:
         Gl_gg_th = np.load(f'{self.params.cls_th_dir}/Cl_gg_mean.npy')
-        Gl_gb_th = bgw*self.theory.Gl_gb_fid 
+        Gl_gb_th = (bgw/self.params.bgw)*self.theory.Gl_gb_fid # already with the GW bias of the simulations
         Gl_bb_th = np.load(f'{self.params.cls_th_dir}/Cl_bb_mean.npy')
         
         # IM:  will now REPLACE the auto-correlations by NOISE
@@ -714,83 +744,89 @@ class cl_theory(object):
         self.cl_fid = self.Gl_gb_fid-self.Gl_gb_rand_fid
    
 
-    def new_Cl(self, CL,h0,om,w0=-1,wa=0):
-        ''' This function creates another C_l(r_i,r_j) by summing many bins from an original C_l(z_i,z_j).
-        
-            Args:
-                CL ('array') : The original 3D C_l(z,z') matrix from where you'll obtain another C_l. 
-        
-                h0,om,w0,wa ('float') : cosmological parameters
-                
-                return ('array') : a cosmology-dependent reshaped version of your original
-                    C_l(z,z') into C_l(z,D), where D are luminosity distance bins equivalent
-                    to (zmin,zmax) in the fiducial model.
-                    This is calculated by rebinning galaxy bins and it is the version used in Santiago de Matos et al. 2025.
-                    The only adaptation is to use density contrast maps instead of number counts.
-   
-        '''
+    def _new_z_edges(self, h0, om, w0=-1, wa=0):
+        ''' Redshifts of the fiducial luminosity distance edges D_zb in the cosmology (h0, om, w0, wa),
+            with the same CAMB background as the fiducial model (exact at the fiducial cosmology). '''
+
         h=h0/100
         omch2=25*om*h**2/30
         ombh2=5*om*h**2/30
         pars = camb.set_params(H0=h0, omch2=omch2, ombh2=ombh2, NonLinear=camb.model.NonLinear_both)
         pars.set_dark_energy(w=w0, cs2=1.0, wa=wa, dark_energy_model='ppf')
-        # Careful: Not adapted to w0wa yet!
-
         results = camb.get_background(pars)
-        z_grid = np.linspace(0.0, 3*self.params.zmax, 10001)
-        z_of_D = CubicSpline(results.luminosity_distance(z_grid), z_grid)
-        new_z = np.where(self.params.D_zb > 0, z_of_D(self.params.D_zb), 0)
-        ztol = 1e-10*max(abs(new_z[-1]), 1.0)
-        gal_idx = np.array([bisect.bisect_right(new_z, z+ztol)-1 for z in self.params.gal_zs2])
-         
-        #### new cosmology distance bin edges ####
-        D_idx = np.array([bisect.bisect_right(self.params.D_zb, d)-1 for d in self.params.fid_D])#how many D bins fit inside the fiducial cosmology 'bh_bins' D bins
-        if np.max(D_idx)==(len(self.params.zb)-1):
-            D_idx=D_idx[D_idx<(len(self.params.zb)-1)]
-            D_idx=np.append(D_idx,[(len(self.params.zb)-1)])
-        else:
-            D_idx=D_idx[D_idx<(len(self.params.zb)-1)]
-            
-        if np.max(gal_idx)==(len(self.params.zb)-1):
-            gal_idx=gal_idx[gal_idx<(len(self.params.zb)-1)]
-            gal_idx=np.append(gal_idx,[(len(self.params.zb)-1)])
-        else:
-            gal_idx=gal_idx[gal_idx<(len(self.params.zb)-1)]
-            
-        matrix_bin1 = np.zeros(shape=(CL.shape[0],CL.shape[1], self.params.bh_bins), dtype = 'float32')  # matrix after fiducial D binning
-        matrix_bin2 = np.zeros(shape=(CL.shape[0],self.params.gal_bins, self.params.bh_bins), dtype = 'float32') # matrix after z binning
-        sub = 0
-        #ng_new = np.zeros(self.params.gal_bins)
-        
-        # Rebinning BBH distance bins
-        for i in range(1,len(D_idx)-1):
-            #exceed = ((fid_D[i]-new_D[D_idx[i]] )/(new_D[D_idx[i]+1]-new_D[D_idx[i]])) * CL[:,:,D_idx[i]]
-            exceed = ((self.params.fid_D[i]-self.params.D_zb[D_idx[i]] )/(self.params.D_zb[D_idx[i]+1]-self.params.D_zb[D_idx[i]])) * CL[:,:,D_idx[i]]
-            matrix_bin1[:,:,i-1] = np.sum(CL[:,:,D_idx[i-1]:D_idx[i]], axis=2) + exceed - sub
-            sub = exceed
-        matrix_bin1[:,:,i] = np.sum(CL[:,:,D_idx[i]:D_idx[i+1]], axis=2)
-        sub = 0
-        s = 0
-        
-        # Rebinning galaxy bins
-        # The following line was commented out because we use now galaxy density contrast maps
-        # It was needed in Santiago de Matos et al. when using number counts, as well as other lines with 'ng' in what follows
-        #matrix_bin1 = matrix_bin1*np.broadcast_to(self.params.ng.reshape(1, len(self.params.ng), 1), (matrix_bin1.shape[0], len(self.params.ng), matrix_bin1.shape[2]))
-        for i in range(1,len(gal_idx)-1):
-            exceed = ((-new_z[gal_idx[i]]+self.params.gal_zs2[i])/(new_z[gal_idx[i]+1]-new_z[gal_idx[i]])) * matrix_bin1[:,gal_idx[i],:]
-            matrix_bin2[:,i-1,:] = np.sum(matrix_bin1[:,gal_idx[i-1]:gal_idx[i],:],axis=1) + exceed - sub
-            sub = exceed
-            ex = ((-new_z[gal_idx[i]]+self.params.gal_zs2[i])/(new_z[gal_idx[i]+1]-new_z[gal_idx[i]])) #* self.params.ng[gal_idx[i]]
-            #ng_new[i-1] = np.sum(self.params.ng[gal_idx[i-1]:gal_idx[i]]) + ex - s
-            s = ex
-            
-        matrix_bin2[:,i,:] = np.sum(matrix_bin1[:,gal_idx[i]:gal_idx[i+1],:],axis=1)
-        #ng_new[i] = np.sum(self.params.ng[gal_idx[i]:gal_idx[i+1]])
 
-        # Insert Ng in the denominator of Cl; then rebinn Ng and multiply the final matrix by it
-        #ng_newvec = np.broadcast_to(ng_new.reshape(1, len(ng_new), 1), (matrix_bin2.shape[0], len(ng_new), matrix_bin2.shape[2]))
-    
-        return np.real(matrix_bin2) #np.where(ng_newvec >0, np.real(matrix_bin2)/ng_newvec, np.real(matrix_bin2))       
+        z_grid = np.linspace(0.0, 3*self.params.zmax, 10001)
+        D_grid = results.luminosity_distance(z_grid)
+        while D_grid[-1] < self.params.D_zb[-1]: # extend the grid for extreme cosmologies
+            z_grid = np.linspace(0.0, 2*z_grid[-1], 10001)
+            D_grid = results.luminosity_distance(z_grid)
+
+        z_of_D = CubicSpline(D_grid, z_grid)
+        return np.where(self.params.D_zb > 0, z_of_D(self.params.D_zb), 0.)
+
+
+    def _galaxy_weights(self, new_z):
+        ''' Matrix W[a, j] giving the contribution of the template galaxy bin j to the galaxy bin a of the data.
+
+            In the trial cosmology, the template bin j (paired with the GW distance bin j of the fiducial model)
+            spans the redshifts [new_z[j], new_z[j+1]], while the galaxy bins of the data have the fixed redshift
+            edges gal_zs2. The weights use the observed number of galaxies ng(z) in each overlap (uniform in z
+            inside each simulation bin), so the galaxy content of every data bin is the observed one:
+             - "contrast" maps: N_overlap/N_a, the galaxy-number weighted average of the template bins, where N_a
+                                is the number of galaxies of the data bin (galaxies that are not paired with any
+                                GW distance bin do not correlate with the GWs);
+             - "counts" maps: N_overlap/N_j, the sum of the template bins, scaled to the observed galaxies
+                              of the overlap. '''
+
+        zb = self.params.zb
+        ng = self.params.ng
+        gal_zs = self.params.gal_zs2
+
+        # Cumulative number of observed galaxies
+        N_cum = np.append(0., np.cumsum(ng))
+
+        lo = np.maximum(gal_zs[:-1, None], new_z[None, :-1])
+        hi = np.minimum(gal_zs[1:, None], new_z[None, 1:])
+        N_overlap = np.where(hi > lo, np.interp(hi, zb, N_cum) - np.interp(lo, zb, N_cum), 0.)
+
+        W = np.zeros_like(N_overlap)
+        if self.params.galaxy_map_type == 'contrast':
+            N_a = np.interp(gal_zs[1:], zb, N_cum) - np.interp(gal_zs[:-1], zb, N_cum)
+            np.divide(N_overlap, N_a[:, None], out=W, where=N_a[:, None] > 0)
+        else:
+            np.divide(N_overlap, ng[None, :], out=W, where=ng[None, :] > 0)
+
+        return W
+
+
+    def new_Cl(self, CL,h0,om,w0=-1,wa=0):
+        ''' This function creates another C_l(z_i,D_j) from the original C_l(z_i,D_j) of the simulations.
+        
+            Args:
+                CL ('array') : The original 3D C_l(z,D) matrix (multipoles, galaxy bins, GW bins) of the
+                               simulation bins, from where you'll obtain another C_l.
+        
+                h0,om,w0,wa ('float') : cosmological parameters
+                
+                return ('array') : a cosmology-dependent version of your original C_l(z,D) in the likelihood
+                    bins, where D are luminosity distance bins equivalent to the redshift bins in the fiducial model.
+                    The GW distance bins are kept as observed, and the cosmology enters by rebinning the galaxy
+                    bins: in the new cosmology, the galaxies paired with the GWs of the fiducial bin D_j are at
+                    redshifts z(D_j). The rebinning keeps the observed number of galaxies in each redshift bin,
+                    for density contrast or number count maps (see _galaxy_weights).
+                    Based on the version used in Santiago de Matos et al. 2025.
+   
+        '''
+        new_z = self._new_z_edges(h0, om, w0, wa)
+
+        # GW distance bins: fiducial simulation bins summed into the likelihood bins
+        matrix_bin1 = np.einsum('ljd,bd->ljb', CL[:, :self.params.Nbins, :self.params.Nbins], self.params.aggregation_matrix('gw'))
+
+        # Galaxy redshift bins in the new cosmology
+        W = self._galaxy_weights(new_z)
+        matrix_bin2 = np.einsum('aj,ljb->lab', W, matrix_bin1).astype('float32')
+
+        return np.real(matrix_bin2)
 
 
 class cl_data(object):

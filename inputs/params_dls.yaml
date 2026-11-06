@@ -7,7 +7,7 @@
 "corr": null # Number of correlated matter shells (null = None in python language; if so, all shells are correlated)
 "bs" : 5 # bin size for the multipole bins
 "photoz" : null #0.015 # redshift uncertainties
-"smail": [0.7, 0.8, 2.0, 6e7] # Parameter values (z_mode, alpha, beta, Ngal) of Smail function, if dndz file is not provided
+"smail": [0.7, 0.8, 2.0, 6.0e+7] # Parameter values (z_mode, alpha, beta, Ngal) of Smail function, if dndz file is not provided
 "bgw": 1 # if different from 1, a second set of galaxy "host" catalogs will be generated
 "include_lensing" : True # for forecasts
 "multiple_surveys": True
@@ -75,10 +75,14 @@
 "lbins": [2, 17] #30 # min and max ell bin for the likelihood analysis
 "cls_theory_dir": "/desi_legacy_project/cls_blue9" # Path to theory cls
 "cls_data_dir": "/desi_legacy_project/cls_blue9/Cl_gb_mean.npy" # data cls (path+filename or just path if filname is cl_g_data.npy)
-"fsky": 0.7 # sky fraction used in the likelihood analysis. Not needed if using sample covaraince.
+"covariance_type": "sample" # "Fisher" (Gaussian covariance from the mean Cls) or "sample" (covariance of the simulated Cls); null = Fisher for forecasts, sample otherwise
+"galaxy_map_type": "contrast" # galaxy maps used in the Cls: "contrast" (density contrast) or "counts" (number counts)
+"fsky": null # sky fraction of the Fisher covariance; null = from the galaxy mask (mean over the galaxy bins used for a redshift-dependent mask). Not used with the sample covariance.
 "priors": 
   "H0": [20, 140] # prior on H0
   "OM": [0.1, 0.5] # prior on OM
-  "bgw": [0., 10.0] # prior on galaxy bias
+  "bgw": [0., 10.0] # prior on the GW bias (relative to the bgw of the simulations)
+  # "w0": [-2.0, 0.0] # uncomment to vary w0 (fiducial "w0", default -1)
+  # "wa": [-3.0, 2.0] # uncomment to vary wa (fiducial "wa", default 0); w0 + wa >= 0 is always excluded
 "mcmc_steps": 10000 # number of steps in the MCMC
 "mcmc_walkers": 6 # number of walkers in the MCMC
