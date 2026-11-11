@@ -13,7 +13,7 @@ author = 'Isabela Santiago de Matos, Joao Ferri, Raul Abramo, Tessa Baker, Charl
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = []
+#extensions = []
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
@@ -25,3 +25,19 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 html_theme = 'alabaster'
 html_static_path = ['_static']
+
+# -- API documentation -------------------------------------------------------
+import os
+import sys
+sys.path.insert(0, os.path.abspath('../src'))
+
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary', 'sphinx.ext.napoleon']
+autosummary_generate = True
+autodoc_member_order = 'bysource'
+autodoc_default_options = {'members': True, 'undoc-members': True}
+
+# Packages that are hard to install on Read the Docs are mocked
+autodoc_mock_imports = [
+    'mpi4py', 'camb', 'healpy', 'pymaster', 'glass', 'transformcl',
+    'emcee', 'arviz', 'getdist', 'cosmology',
+]
