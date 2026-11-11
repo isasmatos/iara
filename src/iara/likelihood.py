@@ -1,7 +1,6 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import bisect
 import pymaster as nmt
 import os
 import camb
@@ -223,7 +222,6 @@ class global_parameters(object):
         full_cl[:, :self.gbins, self.gbins:] = cl_gb[self.lb_idx_min:self.lb_idx_max,:self.gbins,self.lower_cut:self.bbins+self.lower_cut]#cl_gb[:,:self.gbins,self.lower_cut:self.bbins-self.upper_cut])
         full_cl[:, self.gbins:, :self.gbins] = np.transpose(cl_gb[self.lb_idx_min:self.lb_idx_max,:self.gbins,self.lower_cut:self.bbins+self.lower_cut], (0, 2, 1))
 
-        #print("Shape of fulll Cl [0]:", full_cl.shape[0])
         return full_cl
     
 
@@ -288,8 +286,6 @@ class likelihood_real_data(object):
             self.inv_cov = samp_cov.compute_inv_cov(cov_cut, self.Nsim_eff)
             np.save(f'{self.params.cls_th_dir}/inv_cov.npy', self.inv_cov)
             print("Inverted covariance matrix")
-        #self.cuts_bs = [3,7] # intermediate distance bins to remove (because they have no GWs)
-        # Use cuts_bs = [1,1] for incld. all intermediate dl bins
 
     def chi2(self, h0, om, bgw, w0=-1., wa=0.):
         
@@ -330,9 +326,9 @@ class likelihood_real_data(object):
         chi = self.params.bs*self.chi2(h, om, bgw, pars["w0"], pars["wa"])
         
         if remove_small_scale_residual:
+            # Remove small scale residual in chi2, use average of 15 last bands
             chi_smallest_ells = np.average(chi[:-15])
             chi -= chi_smallest_ells
-            print(f"Removed small scale residual in chi2, using average of 15 last bands.")
         
         return -0.5 * np.sum(chi)
 
@@ -440,7 +436,7 @@ class sample_covariance(object):
 
     def compute_inv_cov(self, cov, Nsim, mask=False, Neff=False):
         """Invert covariance matrix with Hartlap correction and optionally apply mask for H0 prior (non-default)."""
-        print("Computing inverse covariance matrix")
+
         if mask==True: # for cov with len(shape) = 6
             mask_matrix = self.params.mask_h0_prior(np.zeros((self.params.lb_idx_max-self.params.lb_idx_min,self.params.gbins,self.params.bbins)), h0min=self.params.h0_min, h0max=self.params.h0_max)
             mask_flat = mask_matrix.reshape(cov.shape[1]*cov.shape[2])
@@ -462,7 +458,6 @@ class sample_covariance(object):
                 cov_2d = cov.reshape((cov.shape[0]*cov.shape[1],cov.shape[0]*cov.shape[1]))
 
         inv_cov_2d = np.linalg.pinv(cov_2d, rcond=1e-16)
-        print("Inverted covariance matrix")
 
         if mask==True:
             # Build full inverse matrix with zeros for masked variables
@@ -486,8 +481,6 @@ class sample_covariance(object):
             tr2 = np.trace(cov_2d @ cov_2d)
             N_eff = (tr**2) / tr2
             print(f'Effective DOF = {N_eff}')
-
-        print("Hartlap correction applied to inverse covariance matrix")
 
         return inv_cov_2d.reshape(np.shape(cov))
 

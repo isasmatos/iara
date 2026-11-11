@@ -6,7 +6,6 @@ import glass.shells
 import glass.ext.camb
 import warnings
 import os, os.path
-# from mpi4py import MPI
 
 warnings.filterwarnings("ignore", "Wswiglal-redir-stdio")
 
@@ -47,8 +46,6 @@ class matter_power(object):
         pars.Transfer.redshift_step = 0.0005   # smaller step for narrow bins
         pars.Transfer.l_switch_limber = 100    # start Limber approx. later
 
-        print(pars)
-
         return pars
     
 
@@ -64,13 +61,13 @@ class matter_power(object):
         # window function
         ws = glass.shells.tophat_windows(zb, dz=np.min(dz_arr)/100) 
 
-        print("Bin edges:", zb)
-
         return ws
     
 
     def compute(self):
         """Compute matter Cls with camb and store it."""
+
+        warnings.warn(f"Check CAMB accuracy parameters are sufficient for your bin size when using very thin bins. Limber apx. used for l > 100.", category=UserWarning, stacklevel=2)
 
         pars = self._set_camb_params()
         ws = self._make_windows()

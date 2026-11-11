@@ -37,7 +37,6 @@ def bias_g(z, file=False):
     if file==False:
         return 0.66 + 1.62*z #0.971 + 1.042*z # Blue galaxies #(1+z)
     else:
-        print("Reading bias from file")
         bias = np.load(file)
         return np.interp(z, bias[:,0], bias[:,1])
         
@@ -225,32 +224,33 @@ def sim_gal(params, rand=False):
                                            ('Z_TRUE', object), ('KAPPA', object)])#, ('SHEAR', object)])
 
 
+    # Get dndz
+    if dndz_file==None:
+        print("Using Smail distribution")
+
+        try:
+            z_mode, alpha, beta, Ngal = params["smail"]
+        except:
+            z_mode, alpha, beta, Ngal = 0.7, 0.8, 2.0, 6e7 # tuned for desi legacy [(1.0, 2.0, 1.5) -> used in Ferri et al. 2025]
+        
+        dndz_new = glass.observations.smail_nz(bin_edges, z_mode, alpha, beta, norm=Ngal/arcmin2_sky) # * (6*1e7/arcmin2_sky)
+    
+    else:
+        print("Reading dndz from file")
+        if params["multiple_surveys"] == True:
+            dndz_new = {}
+            for survey in params["footprint_dict"].keys():
+                print("File:", dndz_file[survey])
+                dndz_new[survey] = np.genfromtxt(storage+gal_dir+dndz_file[survey])
+                dndz_new[survey] = dndz_new[survey][:Nbins]
+        else:
+            dndz_new = np.genfromtxt(storage+gal_dir+dndz_file)
+            dndz_new = dndz_new[:Nbins]
+
     for k in tqdm(range(N_samp)[rank::size]): # loop over simulations
         
         # Sample a lognormal random field from Gaussian cls (=gls)  
         matter = glass.fields.generate_lognormal(gls, nside, ncorr=corr) 
-        # Get dndz
-        if dndz_file==None:
-            print("Using Smail distribution")
-
-            try:
-                z_mode, alpha, beta, Ngal = params["smail"]
-            except:
-                z_mode, alpha, beta, Ngal = 0.7, 0.8, 2.0, 6e7 # tuned for desi legacy [(1.0, 2.0, 1.5) -> used in Ferri et al. 2025]
-            
-            dndz_new = glass.observations.smail_nz(bin_edges, z_mode, alpha, beta, norm=Ngal/arcmin2_sky) # * (6*1e7/arcmin2_sky)
-        
-        else:
-            print("Reading dndz from file")
-            if params["multiple_surveys"] == True:
-                dndz_new = {}
-                for survey in params["footprint_dict"].keys():
-                    print("File:", dndz_file[survey])
-                    dndz_new[survey] = np.genfromtxt(storage+gal_dir+dndz_file[survey])
-                    dndz_new[survey] = dndz_new[survey][:Nbins]
-            else:
-                dndz_new = np.genfromtxt(storage+gal_dir+dndz_file)
-                dndz_new = dndz_new[:Nbins]
 
         # Set up convergence object
         if params["include_lensing"] == True:
@@ -268,8 +268,6 @@ def sim_gal(params, rand=False):
                 kappa_i = convergence.kappa
                 catalog_G[i]['KAPPA'] = kappa_i
                 #catalog_G[i]['SHEAR'] = gal_she
-                print("Storing convergence.")
-
 
             if dndz_file==None: # smail
                 zg_i, dndzg_i = glass.shells.restrict(zb, dndz_new, ws[i])  # smail
@@ -292,7 +290,6 @@ def sim_gal(params, rand=False):
 
                 for survey in params["footprint_dict"].keys():
 
-                    print(f"Survey: {survey}")
                     # Read survey footprint
                     footprint = np.load(storage+gal_dir+params["footprint_dict"][survey])
                     # Read survey galaxy bias
@@ -465,7 +462,6 @@ def selection_Poisson(params, rand=False):
             npix = hp.nside2npix(nside)
             g_map_photoz_final = g_map_new.astype(float)
             g_map_final = g_map_new.astype(float)
-            #print('N_gal before photoz = ',np.sum(g_map_new, axis=1))
 
             for i in range(Nbins):
 
@@ -711,10 +707,8 @@ def gal_cls(params, gdir):
         w_gg[i] = nmt.NmtWorkspace() # objects to store mode-coupling matrices
         w_gg[i].compute_coupling_matrix(gmask_i, gmask_i, b)
 
-    #print("Computed coupling matrices")
     # Computing pseudo-cls
     cl = []
-    print(N_samp)
 
     for k in tqdm(range(N_samp)):#[rank::size]):
 
@@ -730,11 +724,9 @@ def gal_cls(params, gdir):
             map_masked = gal_count_map[i] * gmask[i]
             alm_g[i] = hp.map2alm(map_masked,lmax=lmax_cls) # 36s for both alms
       
-        #print('computing cls')
         cls_gg = hp.alm2cl(alm_g, lmax=lmax_cls)
 
         # Inverting the pseudo-cls
-        #print('inverting pseudo-cls')
             
         idx = 0
         for n in range(Nbins):
@@ -745,7 +737,6 @@ def gal_cls(params, gdir):
 
         cl.append(Pcls_gg)
             
-        #print('saving cls')
         #os.makedirs(os.path.dirname(f'{cls_dir}/Cls_gg{k+1}.npy'), exist_ok=True)
         #np.save(f'{cls_dir}/Cls_gg{k+1}', Pcls_gg)
         
