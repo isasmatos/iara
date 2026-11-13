@@ -19,7 +19,7 @@
 # Parameters of the simulations
 "nside": 64
 "bin_edges": [0.0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48, 0.54, 0.6] # list or .npy file with list
-"N_sim": 5000 # Number of simulations
+"N_sim": 5 # Number of simulations
 "N_samples": 1000 # N of samples for GW position posterior
 "bgw" : 1 # if different from 1, the GW hosts are drawn from the "host" catalogs of part 1
 "include_lensing" : False # True needs the convergence maps of the galaxy simulations

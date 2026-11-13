@@ -20,7 +20,7 @@
 "nside": 64
 "lmax": 191 # max multipole of the Cls
 "bin_edges": [0.0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48, 0.54, 0.6] # list or .npy file with list
-"N_sim": 5000 # Number of simulations (the galaxy maps give the number of galaxies per bin)
+"N_sim": 5 # Number of simulations (the galaxy maps give the number of galaxies per bin)
 "bs" : 5 # bin size for the multipole bins
 "bgw" : 1 # GW bias (fixed, since it is not in the priors)
 

@@ -18,7 +18,7 @@
 "nside": 64
 "lmax": 191 # max multipole of the matter Cls (up to 3*nside-1)
 "bin_edges": [0.0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48, 0.54, 0.6] # list or .npy file with list
-"N_sim": 5000 # Number of simulations
+"N_sim": 5 # Number of simulations
 "corr": null # Number of correlated matter shells (null = all shells are correlated)
 "bgw" : 1 # if different from 1, a second set of galaxy "host" catalogs will be generated
 "include_lensing" : False # True also saves the catalogs with the convergence
