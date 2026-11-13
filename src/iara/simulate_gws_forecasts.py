@@ -46,9 +46,17 @@ import os, os.path
 
 # If you want to parallelize
 from mpi4py import MPI
+from iara.simulate_galaxies import warn_existing_sims
+from iara.defaults import with_defaults
 rank = MPI.COMM_WORLD.Get_rank() # index of the task
 size = MPI.COMM_WORLD.Get_size() # total number of tasks
 barrier = MPI.COMM_WORLD.Barrier
+
+
+def print_rank0(*args, **kwargs):
+    """Print once (from rank 0), not once per MPI process."""
+    if rank == 0:
+        print(*args, **kwargs)
 
 
 DELTAGAL=0.473477302
@@ -270,6 +278,7 @@ class gw_forecast(object):
     the distance and sky localisation errors of the forecast catalog. '''
 
     def __init__(self, params, rand=False):
+        params = with_defaults(params) # default values of the optional parameters
 
         # Storage
         self.storage = params['storage']
@@ -284,25 +293,25 @@ class gw_forecast(object):
         self.kappa_dir = self.gdir # convergence does not depend on the host bias
 
         if params['bgw'] != 1:
-            print("Using biased galaxy catalog for GW hosts")
+            print_rank0("Using biased galaxy catalog for GW hosts")
             self.gdir = f"{self.gdir}_bias"
 
         # Forecast catalog
         self.catalog_file = self.storage + params['detector_forecast']
         if not os.path.isfile(self.catalog_file):
             self.catalog_file = params['detector_forecast']
-        self.distance_unit = params.get('forecast_distance_unit', 'Mpc')
+        self.distance_unit = params['forecast_distance_unit']
 
         # Sky selection function of the detector network
-        self.sky_selection = params.get('forecast_sky_selection', 'ra_averaged')
-        self.sel_dz = params.get('forecast_sel_dz', 0.5)
-        self.sel_nside = params.get('forecast_sel_nside', 8)
-        self.sel_smoothing = np.radians(params.get('forecast_sel_smoothing_deg', 10.0))
+        self.sky_selection = params['forecast_sky_selection']
+        self.sel_dz = params['forecast_sel_dz']
+        self.sel_nside = params['forecast_sel_nside']
+        self.sel_smoothing = np.radians(params['forecast_sel_smoothing_deg'])
 
         # Errors
-        self.err_nside = params.get('forecast_err_nside', 4)
+        self.err_nside = params['forecast_err_nside']
         self.lensing = params['include_lensing']
-        self.save_samples = params.get('forecast_save_samples', False)
+        self.save_samples = params['forecast_save_samples']
 
         # Simulation set up
         self.nside = params['nside']
@@ -329,7 +338,7 @@ class gw_forecast(object):
         self.rng = np.random.default_rng() # random generator
 
         if self.lensing == False:
-            print("No lensing magnification")
+            print_rank0("No lensing magnification")
 
         self._set_cosmology()
         self._load_catalog()
@@ -384,7 +393,7 @@ class gw_forecast(object):
         self.cat_err_dc = np.array(catalog['err_Dl'], dtype=float)*to_Mpc/(1+z) # error in comoving distance [Mpc]
         self.cat_sigma = sigma_from_area90(np.array(catalog['err_area90'], dtype=float)) # [rad]
 
-        print(f"Loaded {len(z)} events from {self.catalog_file}")
+        print_rank0(f"Loaded {len(z)} events from {self.catalog_file}")
 
 
     def _bin_catalog(self):
@@ -396,7 +405,7 @@ class gw_forecast(object):
 
         self.Nbh_bincounts = np.bincount(bh_bin[bh_bin >= 0], minlength=self.Nbins) # N of BBHs in each bin
 
-        print(f"Simulating {np.sum(self.Nbh_bincounts)} GW events inside the redshift bins "
+        print_rank0(f"Simulating {np.sum(self.Nbh_bincounts)} GW events inside the redshift bins "
               f"({np.sum(bh_bin < 0)} detections fall outside them)")
 
 
@@ -411,7 +420,7 @@ class gw_forecast(object):
         z0, zmax = self.zb[0], self.zb[-1]
         thick_edges = np.append(np.arange(z0, zmax, self.sel_dz), zmax)
         Nbins_thick = len(thick_edges)-1
-        print('Number of thick bins:', Nbins_thick)
+        print_rank0('Number of thick bins:', Nbins_thick)
 
         npix = hp.nside2npix(self.nside)
         map_smoothed = np.ones((Nbins_thick, npix))
@@ -545,7 +554,6 @@ class gw_forecast(object):
         # Create 3D samples for each source
         samples_all = []
 
-        print("Number of GW sources:", Nbh)
         for j in range(Nbh):
 
             dl_samples = (1+zs[j])*self.rng.normal(new_D[j], err_D[j], self.N_samples)
@@ -566,8 +574,6 @@ class gw_forecast(object):
                 os.makedirs(f'{self.bdir}/samples', exist_ok=True)
                 np.save(f'{self.bdir}/samples/samples{i+1}_{j+1}', samples)
 
-        if self.save_samples == True:
-            print(f"Samples of BBHs in the {i+1}-th distance bin saved")
 
         return samples_all
 
@@ -598,9 +604,10 @@ class gw_forecast(object):
 
         npix = hp.nside2npix(self.nside)
 
-        for k in tqdm(range(self.N_sim)[rank::size]):
+        warn_existing_sims(self.bdir, self.N_sim, prefix="bbh_count_map", stacklevel=4)
 
-            print(f"Starting simulation {k+1}")
+        for k in tqdm(range(self.N_sim)[rank::size], disable=rank != 0):
+
             gal_count_map = np.load(f'{self.gdir}/gal_count_map{k+1}.npy')
             kappas = self._load_kappa(k+1) if self.lensing == True else [None]*self.Nbins
 
@@ -628,11 +635,11 @@ class gw_forecast(object):
             os.makedirs(f'{self.bdir}', exist_ok=True)
             np.save(f'{self.bdir}/hosts_map{k+1}', hosts_map)
 
-            print(f"Saving BBH map {k+1}")
             np.save(f'{self.bdir}/bbh_count_map{k+1}', bbh_count_map)
 
 
 def sim_bbh(params, rand=False):
     """Simulate BBH positions out of galaxy catalog, given a detector network forecast"""
+    params = with_defaults(params) # default values of the optional parameters
 
     gw_forecast(params, rand=rand).run()

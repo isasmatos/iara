@@ -8,13 +8,10 @@
 # Pipeline: galaxy and GW maps -> masked pseudo-Cls (gg, bb, gb) of each simulation, inverted with namaster -> mean Cls.
 # The same is done for the randoms. The outputs are stored in tutorial_output/.
 # nside, bin_edges and N_sim must be the same as in part1.yaml and part2.yaml.
+# Optional parameters that are not listed take their default values (see docs/parameters.rst)
 
-# Which steps to perform (all keys must be present)
-"compute_matter_cls" : False
-"simulate_galaxies" : False
-"simulate_gws" : False
+# Which steps to perform (steps that are not listed are not performed)
 "compute_cls" : True
-"mcmc" : False
 
 # Parameters of the simulations
 "nside": 64
@@ -31,12 +28,4 @@
 "cls_dir": "/tutorial_output/cls" # path to cls
 
 # Galaxy survey
-"gal_dir": "/galaxy_inputs" # path to galaxy data files (only used to read a mask file)
 "mask": null # null = simple galactic cut (|b| > ~19.5 deg, 2/3 of the sky)
-"completeness": null # null = no selection function (otherwise the "_obs" galaxy maps are used)
-"Nphotoz": null # null = no photometric redshifts (otherwise the "_obs" galaxy maps are used)
-
-# Read by the code, but not used in a forecast
-"forecast" : True
-"insert_bright_sirens" : False
-"lvk_maps": "/lvk_maps"

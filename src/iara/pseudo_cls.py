@@ -1,4 +1,9 @@
-# Compute pseudo-Cls of galaxy and GW simulations
+"""Pseudo-Cls of the galaxy and GW simulations, with namaster.
+
+For each simulation, :func:`pseudo_cls` computes the galaxy auto (gg), GW auto (bb) and cross
+(gb) Cls of all pairs of bins, in bands of ``bs`` multipoles, with the galaxy mask
+(:func:`galaxy_mask`). :func:`cl_means` averages them over the simulations.
+"""
 
 from time import time
 import numpy as np
@@ -11,6 +16,8 @@ from scipy.special import legendre
 from scipy.integrate import quad
 import os, os.path
 from mpi4py import MPI
+from iara.simulate_galaxies import warn_existing_sims
+from iara.defaults import with_defaults
 
 
 rank = MPI.COMM_WORLD.Get_rank() # index of the task
@@ -18,15 +25,22 @@ size = MPI.COMM_WORLD.Get_size() # total number of tasks
 barrier = MPI.COMM_WORLD.Barrier
 
 
+def print_rank0(*args, **kwargs):
+    """Print once (from rank 0), not once per MPI process."""
+    if rank == 0:
+        print(*args, **kwargs)
+
+
 def galaxy_mask(params, Nbins):
     """Galaxy mask used in the pseudo-Cls (and for the sky fraction in the likelihood).
     Returns the mask file in gal_dir, of shape (npix,) or (Nbins, npix), or, if "mask" is null,
-    a simple galactic cut |sin(b)| > 1/3 for all bins, of shape (Nbins, npix)."""
+    a simple galactic cut ``|sin(b)| > 1/3`` for all bins, of shape (Nbins, npix)."""
+    params = with_defaults(params) # default values of the optional parameters
 
     if params['mask'] is None:
 
         # Simple galactic cut mask
-        print("Using simple galactic cut mask")
+        print_rank0("Using simple galactic cut mask")
         f_sky_masked = 1/3
         nside = params['nside']
         npix = hp.nside2npix(nside)
@@ -37,7 +51,7 @@ def galaxy_mask(params, Nbins):
 
     else:
         mask_path = params["storage"]+params["gal_dir"]+params["mask"]
-        print(mask_path)
+        print_rank0(f"Loading mask {mask_path}")
         gmask = np.load(mask_path)
 
     return gmask
@@ -47,13 +61,13 @@ def pseudo_cls(params, rand=False):
     
     """Computes pseudo-cls given galaxy and bbh catalogs.
     For galaxies, masks 1/3 of the sky. Uses bandpowers."""
+    params = with_defaults(params) # default values of the optional parameters
 
     storage = params["storage"]
     gdir = storage+params["gdir"]
     bdir = storage+params["bdir"]
     cls_dir = storage+params["cls_dir"]
-    forecast = params["forecast"]
-    galaxy_map_type = params.get("galaxy_map_type", "contrast") # galaxy maps: "contrast" or "counts"
+    galaxy_map_type = params["galaxy_map_type"] # galaxy maps: "contrast" or "counts"
     if galaxy_map_type not in ['contrast', 'counts']:
         raise ValueError(f"galaxy_map_type must be 'contrast' or 'counts', not {galaxy_map_type}")
 
@@ -61,11 +75,11 @@ def pseudo_cls(params, rand=False):
         gdir += '_rand'
         bdir += '_rand'
         cls_dir += '_rand'
-        print('Using random galaxy maps')
+        print_rank0('Using random galaxy maps')
 
     if params['completeness'] is not None or params['Nphotoz'] is not None:
         gdir += '_obs' # with photo-z uncertainties or selection function applied
-        print('Using observed galaxy maps')
+        print_rank0('Using observed galaxy maps')
          
     lmax = params['lmax']
     nside = params['nside']
@@ -101,7 +115,6 @@ def pseudo_cls(params, rand=False):
 
     # Save time if mask is the same for all bins, i.e. shape(gmask) = (Npixels)
     redshift_independent_mask = (gmask.ndim == 1)
-    print("redshift_independent_mask:", redshift_independent_mask)
 
     for i in range(Nbins):
 
@@ -112,10 +125,11 @@ def pseudo_cls(params, rand=False):
         w_gg[i].compute_coupling_matrix(gmask_i, gmask_i, b)
         w_gb[i].compute_coupling_matrix(gmask_i, bmask, b)
 
-    print("Computed coupling matrices")
+    print_rank0("Computed coupling matrices")
 
     # Computing pseudo-cls
-    for k in tqdm(range(N_samp)[rank::size]):
+    warn_existing_sims(cls_dir, N_samp, prefix="Cls_gb")
+    for k in tqdm(range(N_samp)[rank::size], disable=rank != 0):
 
         Pcls_gb = np.zeros(shape=(n_bands, Nbins, Nbins), dtype='float32')
         Pcls_gg = np.zeros(shape=(n_bands, Nbins, Nbins), dtype='float32')
@@ -129,17 +143,9 @@ def pseudo_cls(params, rand=False):
         gal_count_map = np.load(f'{gdir}/gal_count_map{k+1}.npy')
         gal_count_map = gal_count_map[:Nbins]
 
-        if forecast == True:
-
-            # Get bbh count map from simulations
-            bh_count_map = np.load(f'{bdir}/bbh_count_map{k+1}.npy')
-            bh_count_map = bh_count_map[:Nbins]
-
-        else:
-
-            # Get bbh count map from simulations
-            bh_count_map = np.load(f'{bdir}/bbh_count_map{k+1}.npy')
-            bh_count_map = bh_count_map[:Nbins]
+        # Get bbh count map from simulations
+        bh_count_map = np.load(f'{bdir}/bbh_count_map{k+1}.npy')
+        bh_count_map = bh_count_map[:Nbins]
             
         start=time()
         for i in range(Nbins):
@@ -171,7 +177,6 @@ def pseudo_cls(params, rand=False):
                 Pcls_bb[:,i,j] = Pcls_bb[:,j,i] = w_bb.decouple_cell(cls_bb[idx][np.newaxis,:], cl_bias=None)
                 idx += 1
             
-        print(f'saving cls of simulation {k+1}')
         os.makedirs(os.path.dirname(f'{cls_dir}/Cls_gg{k+1}.npy'), exist_ok=True)
         os.makedirs(os.path.dirname(f'{cls_dir}/Cls_bb{k+1}.npy'), exist_ok=True)
         os.makedirs(os.path.dirname(f'{cls_dir}/Cls_gb{k+1}.npy'), exist_ok=True)
@@ -182,6 +187,7 @@ def pseudo_cls(params, rand=False):
         
 def cl_means(params, rand=False):
     """Compute the average Cls over N_samp simulations"""
+    params = with_defaults(params) # default values of the optional parameters
     
     storage = params["storage"]
     cls_dir = storage+params["cls_dir"]
@@ -250,6 +256,7 @@ def legendre_integral(theta_min, theta_max, l_max, lbvec):
 def cl_gb_lsum(params,cl,l_max,theta_vec):
   """Computes the matrix which is the sum of all Cl's, from l=0 to l=l_max(theta),
      with weights (2l+1) Pl(cos(theta)) integrated in theta."""
+  params = with_defaults(params) # default values of the optional parameters
 
   lmax = params['lmax']
   lmax_cls = lmax-1
@@ -275,7 +282,6 @@ def cl_gb_lsum(params,cl,l_max,theta_vec):
     else:
         # if that happens for some l, stop in first l with negative contribution
       idx=int(np.where(np.sign(Pl_integrals[t])<0)[0][0])
-      print(idx)
       
     for j in range(idx):
         cls_lsum[t,:,:] += cl[j,:,:] * Pl_integrals[t,j]

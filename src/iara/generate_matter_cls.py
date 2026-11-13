@@ -1,4 +1,8 @@
-# Compute matter cls with camb and store it
+"""Matter angular power spectra of the redshift bins, computed with CAMB.
+
+First step of the pipeline (``compute_matter_cls``): the class :class:`matter_power` computes the
+matter Cls of the bins of ``bin_edges`` in the fiducial cosmology and stores them in ``matter_cls``.
+"""
 
 import numpy as np
 import camb
@@ -6,6 +10,7 @@ import glass.shells
 import glass.ext.camb
 import warnings
 import os, os.path
+from iara.defaults import with_defaults
 
 warnings.filterwarnings("ignore", "Wswiglal-redir-stdio")
 
@@ -16,6 +21,7 @@ class matter_power(object):
     It takes cosmological parameters and redshift shells as input. '''
 
     def __init__(self, params):
+        params = with_defaults(params) # default values of the optional parameters
         
         # Storage
         self.storage = params['storage']

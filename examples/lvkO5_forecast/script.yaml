@@ -6,13 +6,12 @@
 #
 # Pipeline: matter Cls -> galaxy simulations -> forecast GW maps -> pseudo-Cls -> MCMC.
 # The outputs are stored in script_output/.
+# Optional parameters that are not listed take their default values (see docs/parameters.rst)
 
 # Which steps to perform
 "compute_matter_cls" : True
 "simulate_galaxies" : True
 "simulate_gws" : True
-"simulate_sne": False
-"insert_bright_sirens" : False
 "compute_cls" : True
 "mcmc" : True
 
@@ -24,31 +23,22 @@
 "N_samples": 1000 # N of samples for GW position posterior
 "corr": null # Number of correlated matter shells (null = all shells are correlated)
 "bs" : 5 # bin size for the multipole bins
-"photoz" : null # redshift uncertainties
 "bgw" : 1 # if different from 1, a second set of galaxy "host" catalogs will be generated
-"include_lensing" : False # True needs kappa_map{k}.npy files, which simulate_galaxies.py does not save in this version
+"include_lensing" : False # True also saves the convergence maps of the galaxy simulations, used in the GW distances
 
 # Fiducial cosmology
 "H0": 67.36
 "omch2": 0.1200
 "ombh2": 0.02237
-"OM": 0.3153
 "As": 2.100e-9
 "ns": 0.9649
 "tau": 0.0544
-"w0": -1.0 # dark energy w(a) = w0 + wa*(1-a) (PPF): fiducial values, fixed in the MCMC unless they are in the priors
-"wa": 0.0
 
 # Parameters of forecasts
-"forecast" : True
+"forecast" : True # forecast catalog for the GWs, and Fisher covariance in the likelihood
 "detector_forecast": "/inputs/lvkO5.txt" # forecast catalog (relative to storage), with columns z Dl ra dec err_Dl err_area90
 "forecast_distance_unit": "Gpc" # unit of Dl and err_Dl in lvkO5.txt
 "forecast_sky_selection": "ra_averaged" # the ra of the catalog is an Earth-fixed azimuth: only declinations are used
-"forecast_sel_dz": 0.5 # thickness of the redshift bins of the selection maps
-"forecast_sel_nside": 8 # nside of the event histograms of the selection maps
-"forecast_sel_smoothing_deg": 10.0 # Gaussian smoothing of the selection maps [deg]
-"forecast_err_nside": 4 # max nside of the sky pixels used to assign errors
-"forecast_save_samples": False # save the (Dl, lat, lon) samples of every event
 
 # Set paths of simulations (relative to storage)
 "storage": "." # the folder iara is run from
@@ -57,29 +47,19 @@
 "bdir": "/script_output/gws" # path to GW simulations
 "cls_dir": "/script_output/cls" # path to cls
 
-# Galaxy survey: Smail distribution over the full sky (no input files)
-"gal_dir": "/galaxy_inputs" # path to galaxy data files (not used)
-"dndz": null # null = Smail distribution
+# Galaxy survey: Smail distribution over the full sky (no dndz file, selection function or photo-z's)
 "smail": [0.7, 0.8, 2.0, 6.0e+7] # (z_mode, alpha, beta, Ngal) of the Smail distribution
-"multiple_surveys": False
 "mask": null # null = simple galactic cut in the pseudo-Cls
-"completeness": null # null = no selection function
-"Nphotoz": null
-
-# Path to GW data files (not used in forecasts)
-"lvk_maps": "/lvk_maps"
 
 # Parameters of the likelihood and MCMC
 # The forecast likelihood uses the mean Cls of the simulations both as theory and as data.
 "cls_theory_dir": "/script_output/cls" # mean Cls used as theory (relative to storage)
 "cls_data_dir": "/script_output/cls" # mean Cls used as data (relative to storage)
-"covariance_type": "Fisher" # "Fisher" (Gaussian covariance from the mean Cls) or "sample" (needs N_sim > number of data points + 2)
 "galaxy_map_type": "contrast" # galaxy maps used in the Cls: "contrast" or "counts"
-"fsky": null # sky fraction of the Fisher covariance; null = from the galaxy mask (here the galactic cut, 2/3)
 "cut_bins": [0, 0, 0] # number of likelihood bins removed: [low distance, high distance, high redshift]
 "coarse_bin": 1 # number of simulation bins combined in each likelihood bin
 "lbins": [1, 20] # first and last+1 multipole bands used (bands of size bs from ell = 2)
-"priors": # uniform priors; parameters not listed are fixed at their fiducial values
+"priors": # uniform priors; parameters not listed are fixed at their fiducial values (w0 = -1, wa = 0 by default)
   "H0": [20, 140]
   "OM": [0.1, 0.5]
   "bgw": [0.0, 10.0]

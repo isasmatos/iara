@@ -6,6 +6,14 @@
 
 IARA (*Inference from Angular cross-correlations for Redshift-peak Analysis*) is a code for cosmological parameter inference from the angular cross-correlations of localized gravitational-wave sources and galaxies. It implements the Peak Sirens method.
 
+### Documentation
+
+The documentation is hosted on Read the Docs: **https://iara.readthedocs.io**. It covers the installation, the usage, every input parameter with its default value, and the API reference of all modules. Its sources are in the `docs` folder (configuration in `.readthedocs.yaml`). To build it locally, with Sphinx installed (see `docs/requirements.txt`):
+
+    cd docs && make html
+
+and open `docs/_build/html/index.html` in a browser.
+
 ### Installation
 
 1. Create a new conda environment and install the required Python packages:
@@ -57,7 +65,7 @@ IARA (*Inference from Angular cross-correlations for Redshift-peak Analysis*) is
 
     > mpirun -np <ntasks> iara --run <your_input_file>.yaml
 
-    With `--run`, the input file is a path relative to the folder you run from, or an absolute path; if no such file exists, IARA looks for a file of that name in the `inputs` folder. The `iara` command is installed by `pip install -e .` (reinstall if you installed IARA before this command existed).
+    With `--run`, the input file is a path relative to the folder you run from, or an absolute path; if no such file exists, IARA looks for a file of that name in the `inputs` folder.
 
     The older form still works:
 

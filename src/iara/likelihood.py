@@ -1,4 +1,11 @@
+"""Likelihood of the galaxy-GW cross-Cls.
 
+Theory and data Cls are the mean pseudo-Cls of the simulations, combined into the likelihood bins
+(``coarse_bin``, ``cut_bins``, ``lbins``). The theory Cls are moved to other values of H0, OM, w0 and
+wa by remapping the luminosity distance bins of the GWs, and rescaled by the GW bias. The covariance
+is either Gaussian (Fisher, :class:`likelihood`) or estimated from the simulations
+(:class:`sample_covariance`, :class:`likelihood_real_data`).
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 import pymaster as nmt
@@ -8,6 +15,7 @@ from matplotlib import rcParams
 import warnings
 from scipy.interpolate import interp1d, CubicSpline
 from iara.pseudo_cls import galaxy_mask
+from iara.defaults import with_defaults
 
 
 rcParams['mathtext.fontset'] = 'stix'
@@ -21,6 +29,7 @@ class global_parameters(object):
     '''
 
     def __init__(self, params):
+        params = with_defaults(params) # default values of the optional parameters
         
         # Storage
         self.storage = params['storage']
@@ -37,8 +46,8 @@ class global_parameters(object):
         self.bgw = params['bgw'] # GW bias of the simulations: the theory Cl_gb is rescaled by bgw/self.bgw
         if not self.bgw > 0:
             raise ValueError(f"bgw must be positive, not {self.bgw}")
-        self.w0 = params.get('w0', -1.) # dark energy equation of state w(a) = w0 + wa*(1-a) (PPF),
-        self.wa = params.get('wa', 0.)  # fixed at these values unless they are in the priors
+        self.w0 = params['w0'] # dark energy equation of state w(a) = w0 + wa*(1-a) (PPF),
+        self.wa = params['wa'] # fixed at these values unless they are in the priors
 
         pars = camb.set_params(H0=self.H0, omch2=self.omch2, ombh2=self.ombh2,As=self.As,ns=self.ns,tau=self.tau,
                             NonLinear=camb.model.NonLinear_both)
@@ -68,7 +77,7 @@ class global_parameters(object):
         #    both for galaxies (redshift) and GWs (fiducial luminosity distance). See aggregation_matrix.
         self.cuts = params['cut_bins'] # cuts in likelihood bins
         self.lower_cut, self.upper_cut, self.z_cut = self.cuts
-        self.coarse_bin = params.get('coarse_bin') or 1
+        self.coarse_bin = params['coarse_bin'] or 1
         if int(self.coarse_bin) != self.coarse_bin or self.coarse_bin < 1:
             raise ValueError(f"coarse_bin must be a positive integer, not {self.coarse_bin}")
         self.coarse_bin = int(self.coarse_bin)
@@ -110,13 +119,13 @@ class global_parameters(object):
 
         # Covariance of the Cls: "Fisher" (Gaussian, from the mean Cls; class likelihood)
         # or "sample" (from the simulations; class likelihood_real_data)
-        self.covariance_type = params.get('covariance_type') or ('Fisher' if self.forecast else 'sample')
+        self.covariance_type = params['covariance_type'] or ('Fisher' if self.forecast else 'sample')
         if self.covariance_type.lower() not in ['fisher', 'sample']:
             raise ValueError(f"covariance_type must be 'Fisher' or 'sample', not {self.covariance_type}")
         self.covariance_type = 'Fisher' if self.covariance_type.lower() == 'fisher' else 'sample'
 
         # Galaxy maps used in the Cls (see pseudo_cls.py): density contrast or number counts
-        self.galaxy_map_type = params.get('galaxy_map_type', 'contrast')
+        self.galaxy_map_type = params['galaxy_map_type']
         if self.galaxy_map_type not in ['contrast', 'counts']:
             raise ValueError(f"galaxy_map_type must be 'contrast' or 'counts', not {self.galaxy_map_type}")
 
@@ -156,7 +165,7 @@ class global_parameters(object):
         # Sky fraction of the Fisher (Gaussian) covariance, which reduces the number of modes. By default it
         # is the observed fraction of the galaxy mask; for a redshift-dependent mask, an effective value:
         # the mean of the sky fractions of the simulation bins of the galaxy bins used in the likelihood.
-        if params.get('fsky') is not None:
+        if params['fsky'] is not None:
             self.f_sky = float(params['fsky'])
         else:
             used = np.flatnonzero(self.thin_to_coarse < self.gbins)
@@ -166,9 +175,9 @@ class global_parameters(object):
 
 
     def mask_h0_prior(self, cl_gb, h0min=None, h0max=None):
-        """Multiplies the matrix cl_gb by a prior in h0
-        cl_gb : cross cls binned in the likelhood binning
-                already with cuts in z and dl bins"""
+        """Multiplies the matrix cl_gb by a prior in h0.
+
+        cl_gb: cross Cls binned in the likelihood binning, already with the cuts in z and Dl bins."""
         
         if h0min is None:
             h0min = self.h0_min
@@ -228,10 +237,11 @@ class global_parameters(object):
     def aggregation_matrix(self, tracer):
         """Matrix A (likelihood bins x simulation bins) that combines the Cls of the simulation bins into
         those of the likelihood bins: Cl_likelihood = A_1 Cl_simulation A_2^T for each multipole.
-            tracer = 'gal': galaxy maps. Density contrasts are averaged with weights N_i/N_I (number of
-                            galaxies of the simulation bin over that of the likelihood bin), which is exact
-                            for the density contrast of the merged bin; counts are summed.
-            tracer = 'gw': GW count maps, which are summed."""
+
+        - tracer = 'gal': galaxy maps. Density contrasts are averaged with weights N_i/N_I (number of
+          galaxies of the simulation bin over that of the likelihood bin), which is exact for the
+          density contrast of the merged bin; counts are summed.
+        - tracer = 'gw': GW count maps, which are summed."""
 
         A = np.zeros((self.gal_bins, self.Nbins))
         A[self.thin_to_coarse, np.arange(self.Nbins)] = 1.
@@ -323,8 +333,10 @@ class likelihood_real_data(object):
         h   = pars["H0"]
         om  = pars["OM"]
         bgw = pars["bgw"]
-        chi = self.params.bs*self.chi2(h, om, bgw, pars["w0"], pars["wa"])
-        
+        # The sample covariance is that of the binned Cls themselves, so (unlike the Fisher
+        # covariance) there is no factor bs for the number of multipoles in each band
+        chi = self.chi2(h, om, bgw, pars["w0"], pars["wa"])
+
         if remove_small_scale_residual:
             # Remove small scale residual in chi2, use average of 15 last bands
             chi_smallest_ells = np.average(chi[:-15])
@@ -831,11 +843,11 @@ class cl_data(object):
     def data_cls(self, data_type='avg'):
         """Compute the matrix with the Cls = Gls-Gls_rand containing
         both auto and cross spectra to be used as data (in z vs Dl space).
-        The auto spectra will later be masked.
-            cls_dir : path to cls of data
-            avg : if True, use the average Cls in cls_dir as data;
-                    if False, use the Cls of a single simulation
-                    as data. Default = True."""
+        The auto spectra will later be masked. The Cls are read from cls_data_dir.
+
+        data_type: 'avg' (default) uses the mean Cls of the simulations as data, 'single' the Cls of
+        the first simulation, and 'data' the measured cross Cls (cl_gb_data.npy). Without forecast,
+        'data' is always used."""
 
         if self.params.forecast == False:
             data_type = 'data'
@@ -868,7 +880,7 @@ class cl_data(object):
             Gl_bb_data=np.zeros((Gl_gb_data.shape[0], Gl_gb_data.shape[2], Gl_gb_data.shape[2]))
 
         else:
-            print("Error: data type not recognized. Use 'avg' or 'single' or 'data'.")
+            raise ValueError(f"data_type {data_type!r} not recognized. Use 'avg', 'single' or 'data'.")
         
         # Loading the shot-noise (random) components
         try:

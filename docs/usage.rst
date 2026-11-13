@@ -46,10 +46,13 @@ sets:
 - The directories where your simulations are stored.
 - The location of your data files.
 - Which modules to run. For example, to simulate only the galaxies after
-  computing the matter power spectrum, set ``simulate_galaxies`` to ``True`` and
-  the other modules to ``False``.
+  computing the matter power spectrum, set ``simulate_galaxies`` to ``True``.
+  Modules that are not listed, or are set to ``False``, are not run.
 - Whether you are running a forecast or analysing real data. These are currently
   handled differently in some modules.
+
+A file only needs the parameters of the modules it runs: the optional parameters
+that are left out take their default values (see :doc:`parameters`).
 
 Running the code
 ----------------
@@ -68,9 +71,7 @@ To run in parallel, use:
 
 With ``--run``, the input file is a path relative to the folder you run from,
 or an absolute path. If no such file exists, IARA looks for a file of that name
-in the ``inputs`` folder. The ``iara`` command is installed by
-``pip install -e .``; reinstall if you installed IARA before this command
-existed.
+in the ``inputs`` folder.
 
 The older form still works:
 

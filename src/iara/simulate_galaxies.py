@@ -1,4 +1,11 @@
-# Generate galaxy catalog
+"""Lognormal galaxy simulations, with GLASS.
+
+:func:`compute_gls` computes the Gaussian Cls of the lognormal fields from the matter Cls, and
+:func:`sim_gal` draws the galaxy count maps of each simulation (and their randoms, with no
+clustering), from a Smail distribution or a ``dndz`` file. With ``include_lensing``, it also
+saves the convergence maps. :func:`selection_Poisson_dndz` applies a selection function and
+photometric redshifts to the maps.
+"""
 
 import numpy as np
 import camb
@@ -20,17 +27,40 @@ from scipy.integrate import quad
 from cosmology.compat.camb import Cosmology
 from scipy.stats import truncnorm
 import transformcl
+from iara.defaults import with_defaults
 
 
 rank = MPI.COMM_WORLD.Get_rank() # index of the task
 size = MPI.COMM_WORLD.Get_size() # total number of tasks
 barrier = MPI.COMM_WORLD.Barrier
 
+
+def print_rank0(*args, **kwargs):
+    """Print once (from rank 0), not once per MPI process."""
+    if rank == 0:
+        print(*args, **kwargs)
+
 arcmin2_sky = 148510800
 Mmin = -27
 Mmax = -19
 L0 = 3.0128*1e28 # Watts
 L0 = 1 # luminosities will have units of L0 (above)
+
+def warn_existing_sims(directory, N_sim, prefix="gal_count_map", stacklevel=3):
+    """Warn once (from rank 0) if some of the N_sim simulations are already in directory,
+    since they will be overwritten. The simulations are the files {prefix}{k}.npy, k = 1, ..., N_sim.
+    stacklevel: the warning points to the line of main.py that runs the step.
+    Must be called by all MPI processes: the barriers make sure that no process is still writing
+    the files of the previous step, or already writing the files of this step, during the check."""
+    barrier()
+    if rank == 0 and os.path.isdir(directory):
+        existing = set(os.listdir(directory))
+        n_existing = sum(f"{prefix}{k+1}.npy" in existing for k in range(N_sim))
+        if n_existing > 0:
+            warnings.warn(f"{n_existing} of the {N_sim} simulations are already in {directory} "
+                          "and will be overwritten.", category=UserWarning, stacklevel=stacklevel)
+    barrier()
+
 
 def bias_g(z, file=False):
     """Galaxy bias"""
@@ -63,6 +93,7 @@ def cum_schechter(L, Lmin):
 def compute_gls(params, monopole=False, smoothing=False):
 
     """Compute Gaussian Cls. Set monopole=True for initial guess with large monopole in the first shell."""
+    params = with_defaults(params) # default values of the optional parameters
     
     storage = params["storage"]
     matter_cls_path = storage+params["matter_cls"]
@@ -164,10 +195,12 @@ def sim_gal(params, rand=False):
     """Generate galaxy catalogs. If rand = False (default), use matter power spectrum
     previously computed with camb. If True, use random distribution with Cl = 0.
     Use precomputed Gaussian Cls ("Gls") as input for GLASS mocks.
-    If include_lensing == True, saves both the maps and the catalogs containing konvergence values.
-    
+
     Output: files gal_count_map{k}.npy for k in [1, N_sim]
-    Each of them are numpy arrays of shape (Nbins x Npixels) with galaxy counts"""
+    Each of them are numpy arrays of shape (Nbins x Npixels) with galaxy counts.
+    If include_lensing == True, also saves kappa_map{k}.npy, of shape (Nbins x Npixels), with the
+    convergence at the effective redshift of each bin (read by the GW simulations)."""
+    params = with_defaults(params) # default values of the optional parameters
     
     storage = params["storage"]
     gdir = storage+params["gdir"]
@@ -194,7 +227,6 @@ def sim_gal(params, rand=False):
 
     # Fiducial cosmology
     H0 = params['H0']
-    OM = params['OM']
     omch2 = params['omch2']
     ombh2 = params['ombh2']
     h = H0/100
@@ -226,28 +258,27 @@ def sim_gal(params, rand=False):
 
     # Get dndz
     if dndz_file==None:
-        print("Using Smail distribution")
+        print_rank0("Using Smail distribution")
 
-        try:
-            z_mode, alpha, beta, Ngal = params["smail"]
-        except:
-            z_mode, alpha, beta, Ngal = 0.7, 0.8, 2.0, 6e7 # tuned for desi legacy [(1.0, 2.0, 1.5) -> used in Ferri et al. 2025]
+        z_mode, alpha, beta, Ngal = params["smail"] # default tuned for desi legacy [(1.0, 2.0, 1.5) -> used in Ferri et al. 2025]
         
         dndz_new = glass.observations.smail_nz(bin_edges, z_mode, alpha, beta, norm=Ngal/arcmin2_sky) # * (6*1e7/arcmin2_sky)
     
     else:
-        print("Reading dndz from file")
+        print_rank0("Reading dndz from file")
         if params["multiple_surveys"] == True:
             dndz_new = {}
             for survey in params["footprint_dict"].keys():
-                print("File:", dndz_file[survey])
+                print_rank0("File:", dndz_file[survey])
                 dndz_new[survey] = np.genfromtxt(storage+gal_dir+dndz_file[survey])
                 dndz_new[survey] = dndz_new[survey][:Nbins]
         else:
             dndz_new = np.genfromtxt(storage+gal_dir+dndz_file)
             dndz_new = dndz_new[:Nbins]
 
-    for k in tqdm(range(N_samp)[rank::size]): # loop over simulations
+    warn_existing_sims(gdir, N_samp)
+
+    for k in tqdm(range(N_samp)[rank::size], disable=rank != 0): # loop over simulations
         
         # Sample a lognormal random field from Gaussian cls (=gls)  
         matter = glass.fields.generate_lognormal(gls, nside, ncorr=corr) 
@@ -255,6 +286,7 @@ def sim_gal(params, rand=False):
         # Set up convergence object
         if params["include_lensing"] == True:
             convergence = glass.lensing.MultiPlaneConvergence(cosmo)
+            kappa_map = np.zeros(shape=(Nbins, hp.nside2npix(nside))) # convergence of each redshift bin
 
         # For each shell generate galaxies from matter field
         for i, delta_i in enumerate(matter): 
@@ -265,7 +297,9 @@ def sim_gal(params, rand=False):
             # Computing convergence
             if params["include_lensing"] == True:
                 convergence.add_window(delta_i, ws[i])
-                kappa_i = convergence.kappa
+                # copy: glass updates its convergence planes in place when the next shell is added
+                kappa_i = np.copy(convergence.kappa)
+                kappa_map[i] = kappa_i
                 catalog_G[i]['KAPPA'] = kappa_i
                 #catalog_G[i]['SHEAR'] = gal_she
 
@@ -335,7 +369,7 @@ def sim_gal(params, rand=False):
                 gal_lons = np.concatenate(gal_lons)
                 gal_lats = np.concatenate(gal_lats)
                 gal_counts = np.sum(gal_counts)  # Not sure why to sum here
-                gal_z = glass.galaxies.redshifts_from_nz(gal_counts, ws[i].za, ws[i].wa)
+                gal_z = glass.galaxies.redshifts_from_nz(gal_counts, ws[i].za, ws[i].wa, warn=False)
             else:
                 gal_lons, gal_lats, gal_z = [], [], []
 
@@ -360,7 +394,7 @@ def sim_gal(params, rand=False):
                     gal_lats = np.concatenate(gal_lats)
             
                     gal_counts = np.sum(gal_counts) # --->  Not sure why to sum here
-                    gal_z = glass.galaxies.redshifts_from_nz(gal_counts, ws[i].za, ws[i].wa)
+                    gal_z = glass.galaxies.redshifts_from_nz(gal_counts, ws[i].za, ws[i].wa, warn=False)
 
                 else:
                     gal_lons, gal_lats, gal_z = [], [], []
@@ -380,16 +414,12 @@ def sim_gal(params, rand=False):
             gal_count_map[i,unique] = counts # galaxy counts N in each redshift bin i    
         
         os.makedirs(os.path.dirname(f'{gdir}/gal_count_map{k+1}.npy'), exist_ok=True)
-        
-        if f'gal_count_map{k+1}.npy' in os.listdir(gdir):
-            warnings.warn(f'Simulation {k+1} already there. Overwritting.', category=UserWarning, stacklevel=2)
 
         np.save(f'{gdir}/gal_count_map{k+1}.npy', gal_count_map)
 
-        # For lensing we need to save the catalog and kappa values
+        # For lensing we need to save the convergence maps (read by the GW simulations)
         if params["include_lensing"] == True:
-            os.makedirs(os.path.dirname(f'{gdir}/catalog_G{k+1}.npy'), exist_ok=True)
-            np.save(f'{gdir}/catalog_G{k+1}', catalog_G)
+            np.save(f'{gdir}/kappa_map{k+1}.npy', kappa_map)
 
         if bgw != 1: # Store maps of hosts in gdir_bias
         
@@ -411,6 +441,7 @@ def selection_Poisson(params, rand=False):
     The last step is to add photometric redshift uncertainties
     for a fraction of galaxies.
     """
+    params = with_defaults(params) # default values of the optional parameters
     
     storage = params["storage"]
     gdir = storage+params["gdir"]
@@ -563,6 +594,7 @@ def selection_Poisson_dndz(params, rand=False):
     each column over the true-z bin intervals (CDF differences), then
     column-normalising to obtain p(z_obs=j | z_true=i).
     """
+    params = with_defaults(params) # default values of the optional parameters
 
     storage = params["storage"]
     gdir = storage + params["gdir"]
@@ -613,11 +645,13 @@ def selection_Poisson_dndz(params, rand=False):
                                   category=UserWarning, stacklevel=2)
 
 
-    print("Built selection function from completeness and mask.")
+    print_rank0("Built selection function from completeness and mask.")
 
     # Build one scatter matrix per region
     scatter_dict = {survey: np.load(gal_dir + dndz_photoz_dict[survey])
                 for survey in fp_dict.keys()}
+
+    warn_existing_sims(f'{gdir}_obs', Nsim)
 
     for k in range(Nsim)[rank::size]:
 
@@ -654,10 +688,6 @@ def selection_Poisson_dndz(params, rand=False):
 
         os.makedirs(os.path.dirname(f'{gdir}_obs/gal_count_map{k+1}.npy'), exist_ok=True)
 
-        if f'gal_count_map{k+1}.npy' in os.listdir(f'{gdir}_obs'):
-            warnings.warn(f'Simulation {k+1} already there. Overwriting.',
-                          category=UserWarning, stacklevel=2)
-
         np.save(f'{gdir}_obs/gal_count_map{k+1}.npy', g_map_obs)
 
 
@@ -666,6 +696,7 @@ def gal_cls(params, gdir):
     
     """Computes pseudo-cls given galaxy catalogs.
     For galaxies, masks 1/3 of the sky. Uses bandpowers of width l = bs."""
+    params = with_defaults(params) # default values of the optional parameters
     
     storage = params["storage"]
     gal_dir = storage+params["gal_dir"]

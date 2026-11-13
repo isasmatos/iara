@@ -6,28 +6,24 @@
 #
 # Pipeline: matter Cls -> Gaussian Cls -> lognormal galaxy maps (and their randoms).
 # The outputs are stored in tutorial_output/.
+# Optional parameters that are not listed take their default values (see docs/parameters.rst)
 
-# Which steps to perform (all keys must be present)
+# Which steps to perform (steps that are not listed are not performed)
 "compute_matter_cls" : True
 "simulate_galaxies" : True
-"simulate_gws" : False
-"compute_cls" : False
-"mcmc" : False
 
 # Parameters of the simulations
 "nside": 64
 "lmax": 191 # max multipole of the matter Cls (up to 3*nside-1)
 "bin_edges": [0.0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48, 0.54, 0.6] # list or .npy file with list
 "N_sim": 5 # Number of simulations
-"corr": null # Number of correlated matter shells (null = all shells are correlated)
 "bgw" : 1 # if different from 1, a second set of galaxy "host" catalogs will be generated
-"include_lensing" : False # True also saves the catalogs with the convergence
+"include_lensing" : False # True also saves the convergence maps (kappa_map{k}.npy), needed by part 2 with lensing
 
 # Fiducial cosmology
 "H0": 67.36
 "omch2": 0.1200
 "ombh2": 0.02237
-"OM": 0.3153
 "As": 2.100e-9
 "ns": 0.9649
 "tau": 0.0544
@@ -37,10 +33,5 @@
 "matter_cls": "/tutorial_output/matter_cls" # path to matter cls
 "gdir": "/tutorial_output/galaxies" # path to galaxy simulations
 
-# Galaxy survey: Smail distribution over the full sky (no input files)
-"gal_dir": "/galaxy_inputs" # path to galaxy data files (not used with the Smail distribution)
-"dndz": null # null = Smail distribution
+# Galaxy survey: Smail distribution over the full sky (no dndz file, selection function or photo-z's)
 "smail": [0.7, 0.8, 2.0, 6.0e+7] # (z_mode, alpha, beta, Ngal) of the Smail distribution
-"multiple_surveys": False
-"completeness": null # null = no selection function
-"Nphotoz": null # null = no photometric redshifts

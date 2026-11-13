@@ -8,12 +8,9 @@
 # Pipeline: mean Cls -> Fisher covariance -> MCMC (emcee) -> chains and contour plot.
 # The outputs are stored in tutorial_output/chains/.
 # nside, lmax, bin_edges, N_sim, bs, bgw and the cosmology must be the same as in parts 1-3.
+# Optional parameters that are not listed take their default values (see docs/parameters.rst)
 
-# Which steps to perform (all keys must be present)
-"compute_matter_cls" : False
-"simulate_galaxies" : False
-"simulate_gws" : False
-"compute_cls" : False
+# Which steps to perform (steps that are not listed are not performed)
 "mcmc" : True
 
 # Parameters of the simulations
@@ -28,7 +25,6 @@
 "H0": 67.36
 "omch2": 0.1200
 "ombh2": 0.02237
-"OM": 0.3138 # (ombh2+omch2)/h^2, the fiducial value of the likelihood: only marks the truth in the contour plot
 "As": 2.100e-9
 "ns": 0.9649
 "tau": 0.0544
@@ -40,9 +36,7 @@
 "cls_data_dir": "/tutorial_output/cls" # mean Cls used as data (from part 3)
 
 # Galaxy survey (as in part 3)
-"mask": null # null = simple galactic cut (|b| > ~19.5 deg, 2/3 of the sky)
-"completeness": null # null = no selection function (otherwise the "_obs" galaxy maps are used)
-"Nphotoz": null # null = no photometric redshifts (otherwise the "_obs" galaxy maps are used)
+"mask": null # null = simple galactic cut (|b| > ~19.5 deg, 2/3 of the sky): gives f_sky
 
 # Likelihood
 "forecast" : True # forecast: Fisher covariance, with f_sky from the galaxy mask

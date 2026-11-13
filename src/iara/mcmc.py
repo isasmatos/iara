@@ -1,4 +1,9 @@
-# MCMC for cosmological parameters estimation
+"""MCMC for the cosmological parameters, with emcee.
+
+:func:`mcmc` samples the likelihood of :mod:`iara.likelihood` with uniform priors (``priors``) and
+stores the chains in ``chains_path``; :func:`plot_contours` and :func:`plot_various_contours`
+plot their contours with getdist.
+"""
 
 import os
 from getdist import plots, MCSamples
@@ -6,12 +11,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import emcee
 import iara.likelihood as lk
-
-
-fiducial_defaults = {'w0': -1., 'wa': 0.} # fiducial values of the parameters that are optional in the input yaml
+from iara.defaults import with_defaults
 
 
 def mcmc(params):
+    params = with_defaults(params) # default values of the optional parameters
 
     # Initializing likelihood
     par = lk.global_parameters(params)
@@ -100,6 +104,7 @@ def mcmc(params):
     
 def plot_contours(params, param_names=None, param_labels=None):
     """Plot contours from a single chain."""
+    params = with_defaults(params) # default values of the optional parameters
     
     filepath1 = f'{params["storage"]}{params["chains_path"]}'
     reader1 = emcee.backends.HDFBackend(filepath1, read_only=True) 
@@ -122,12 +127,12 @@ def plot_contours(params, param_names=None, param_labels=None):
     print("Parameter names:", param_names)
     print("Ranges:", ranges)
     print("Fiducial values:", {
-        par: params.get(par, fiducial_defaults.get(par)) for par in param_names
+        par: params.get(par) for par in param_names
     })
         
     samples1 = MCSamples(samples=sample1,names = param_names, labels=param_labels, ranges=ranges)
 
-    truths = tuple([params.get(name, fiducial_defaults.get(name)) for name in param_names])
+    truths = tuple([params.get(name) for name in param_names])
     samples1.updateSettings({'smooth_scale_2D': 2.})
     #samples1.updateSettings({'smooth_scale_1D': 6.})
 
@@ -169,6 +174,7 @@ def plot_contours(params, param_names=None, param_labels=None):
     
 def plot_various_contours(params, chain_files, chain_labels, param_names, param_labels):
     """Overplot contours from different chains."""
+    params = with_defaults(params) # default values of the optional parameters
 
     ranges = params["priors"].copy()
 
@@ -188,7 +194,7 @@ def plot_various_contours(params, chain_files, chain_labels, param_names, param_
 
         n += 1
    
-    truths = tuple([params.get(name, fiducial_defaults.get(name)) for name in param_names])
+    truths = tuple([params.get(name) for name in param_names])
     
     for samp in samples:
         samp.updateSettings({'smooth_scale_2D': 2.})

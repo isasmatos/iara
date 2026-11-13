@@ -1,0 +1,18 @@
+/* IARA docs (furo theme): the colors are set in conf.py; this file only adjusts the layout. */
+
+/* The pages are always dark: hide the light/dark toggle */
+.theme-toggle-container {
+    display: none;
+}
+
+/* Logo in the upper left corner, linking to the home page */
+.sidebar-brand {
+    align-items: center;
+    padding-top: 1.5rem;
+}
+.sidebar-logo-container {
+    margin: 0;
+}
+.sidebar-logo {
+    max-width: 150px;
+}

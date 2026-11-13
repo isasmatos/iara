@@ -1,4 +1,9 @@
-# Generate BBH catalogs out of galaxy catalogs
+"""GW simulations from real LVK events.
+
+:func:`sim_gws` places each LVK event in a host drawn from the galaxy maps and moves its posterior
+samples (distance and sky position) accordingly, giving the GW count maps of each simulation.
+:func:`insert_bright_siren` adds a bright siren. For forecasts, see :mod:`iara.simulate_gws_forecasts`.
+"""
 
 import numpy as np
 import healpy as hp
@@ -14,12 +19,20 @@ import h5py
 import yaml
 # from os.path import isfile, join
 from mpi4py import MPI
+from iara.simulate_galaxies import warn_existing_sims
+from iara.defaults import with_defaults
 
 warnings.filterwarnings("ignore", "Wswiglal-redir-stdio")
 
 rank = MPI.COMM_WORLD.Get_rank() # index of the task
 size = MPI.COMM_WORLD.Get_size() # total number of tasks
 barrier = MPI.COMM_WORLD.Barrier
+
+
+def print_rank0(*args, **kwargs):
+    """Print once (from rank 0), not once per MPI process."""
+    if rank == 0:
+        print(*args, **kwargs)
 
 
 def sample_hosts(gal_count_map, Nbh_i, nside): # IM: modified to take directly the galaxy count map
@@ -209,6 +222,7 @@ def lvk_move(storage, all_samples, nside, bh_pix_dict, dl_bins, bdir, sim):
 def sim_gws(params, rand=False):
     """Simulate BBH positions out of galaxy catalog
         """
+    params = with_defaults(params) # default values of the optional parameters
     
     storage = params["storage"]
     lvk_maps_path = storage+params["lvk_maps"]
@@ -222,7 +236,7 @@ def sim_gws(params, rand=False):
         bdir = bdir+'_rand'
         
     if bgw != 1:
-        print("Using biased galaxy catalog for GW hosts")
+        print_rank0("Using biased galaxy catalog for GW hosts")
         gdir = f"{gdir}_bias"
 
     # Bins
@@ -265,11 +279,13 @@ def sim_gws(params, rand=False):
             footprint_dict[survey] = np.load(storage+params['gal_dir']+footprint_dict[survey])
 
     # Pre-load all H5 posterior samples once — shared across all simulations
-    print("Pre-loading event posterior samples...")
+    print_rank0("Pre-loading event posterior samples...")
     all_samples = _load_event_samples(lvk_maps_path, lvk_samples_path)
-    print(f"Loaded {len(all_samples)} events.")
+    print_rank0(f"Loaded {len(all_samples)} events.")
 
-    for k in tqdm(range(N_samp)[rank::size]):
+    warn_existing_sims(bdir, N_samp, prefix="bbh_count_map")
+
+    for k in tqdm(range(N_samp)[rank::size], disable=rank != 0):
 
         gal_count_map = np.load(f'{gdir}/gal_count_map{k+1}.npy')
 
@@ -323,6 +339,7 @@ def sim_gws(params, rand=False):
 def insert_bright_siren(params):
     """Take simulated galaxy maps and simulate the position of the bright siren
        on top of it"""
+    params = with_defaults(params) # default values of the optional parameters
     
     storage = params["storage"]
     gal_dir = params['gal_dir']
@@ -333,7 +350,7 @@ def insert_bright_siren(params):
     bgw = params['bgw']
 
     if bgw != 1:
-        print("Using biased galaxy catalog for GW hosts")
+        print_rank0("Using biased galaxy catalog for GW hosts")
         gdir = f"{gdir}_bias"
         
     zmax = params['zmax']
@@ -353,7 +370,9 @@ def insert_bright_siren(params):
     bs = np.load(f'{lvk_maps_path}/bs_count_map.npy')
     bs_pdf = np.sum(bs, axis=1).flatten()
 
-    for k in tqdm(range(N_samp)[rank::size]):
+    warn_existing_sims(bdir, N_samp, prefix="bs_count_map")
+
+    for k in tqdm(range(N_samp)[rank::size], disable=rank != 0):
         
         gal_count_map = np.load(f'{gdir}/gal_count_map{k+1}.npy')
         gal_count_map[:Nbins]
@@ -374,6 +393,7 @@ def insert_bright_siren(params):
 def count_map_subset(params, rand=False):
     """Builds the total count map for a subset of GW events
         for which sky maps are contained in the lvk_maps directory"""
+    params = with_defaults(params) # default values of the optional parameters
 
     storage = params["storage"]
     lvk_maps_path = storage+params["lvk_maps"]
