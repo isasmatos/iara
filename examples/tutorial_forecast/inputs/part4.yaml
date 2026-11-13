@@ -1,0 +1,58 @@
+# Tutorial, part 4: parameter inference
+#
+# Uses the mean Cls of part 3 to constrain H0 and OM. Run from the tutorial folder
+# (storage = "." is the folder iara is run from):
+#   cd examples/tutorial_forecast
+#   iara --run inputs/part4.yaml
+#
+# Pipeline: mean Cls -> Fisher covariance -> MCMC (emcee) -> chains and contour plot.
+# The outputs are stored in tutorial_output/chains/.
+# nside, lmax, bin_edges, N_sim, bs, bgw and the cosmology must be the same as in parts 1-3.
+
+# Which steps to perform (all keys must be present)
+"compute_matter_cls" : False
+"simulate_galaxies" : False
+"simulate_gws" : False
+"compute_cls" : False
+"mcmc" : True
+
+# Parameters of the simulations
+"nside": 64
+"lmax": 191 # max multipole of the Cls
+"bin_edges": [0.0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48, 0.54, 0.6] # list or .npy file with list
+"N_sim": 5000 # Number of simulations (the galaxy maps give the number of galaxies per bin)
+"bs" : 5 # bin size for the multipole bins
+"bgw" : 1 # GW bias (fixed, since it is not in the priors)
+
+# Fiducial cosmology
+"H0": 67.36
+"omch2": 0.1200
+"ombh2": 0.02237
+"OM": 0.3138 # (ombh2+omch2)/h^2, the fiducial value of the likelihood: only marks the truth in the contour plot
+"As": 2.100e-9
+"ns": 0.9649
+"tau": 0.0544
+
+# Set paths of simulations (relative to storage)
+"storage": "." # the folder iara is run from
+"gdir": "/tutorial_output/galaxies" # path to galaxy simulations (from part 1)
+"cls_theory_dir": "/tutorial_output/cls" # mean Cls used as theory (from part 3)
+"cls_data_dir": "/tutorial_output/cls" # mean Cls used as data (from part 3)
+
+# Galaxy survey (as in part 3)
+"mask": null # null = simple galactic cut (|b| > ~19.5 deg, 2/3 of the sky)
+"completeness": null # null = no selection function (otherwise the "_obs" galaxy maps are used)
+"Nphotoz": null # null = no photometric redshifts (otherwise the "_obs" galaxy maps are used)
+
+# Likelihood
+"forecast" : True # forecast: Fisher covariance, with f_sky from the galaxy mask
+"cut_bins": [0, 0, 0] # number of likelihood bins removed: [low distance, high distance, high redshift]
+"lbins": [1, 30] # first and last+1 multipole bands used (bands of size bs from ell = 2)
+"coarse_bin": 1 # number of simulation bins combined in each likelihood bin (default = 1)
+# MCMC
+"priors": # uniform priors; parameters not listed are fixed at their fiducial values
+  "H0": [20, 140]
+  "OM": [0.1, 0.5]
+"chains_path": "/tutorial_output/chains/tutorial.h5" # MCMC chains (relative to storage)
+"mcmc_steps": 2000 # number of steps of each walker
+"mcmc_walkers": 8 # number of walkers (at least twice the number of varied parameters)

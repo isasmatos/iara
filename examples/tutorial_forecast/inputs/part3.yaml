@@ -1,0 +1,42 @@
+# Tutorial, part 3: cross-correlations
+#
+# Uses the galaxy maps of part 1 and the GW maps of part 2. Run from the tutorial folder
+# (storage = "." is the folder iara is run from):
+#   cd examples/tutorial_forecast
+#   mpirun -np 8 iara --run inputs/part3.yaml
+#
+# Pipeline: galaxy and GW maps -> masked pseudo-Cls (gg, bb, gb) of each simulation, inverted with namaster -> mean Cls.
+# The same is done for the randoms. The outputs are stored in tutorial_output/.
+# nside, bin_edges and N_sim must be the same as in part1.yaml and part2.yaml.
+
+# Which steps to perform (all keys must be present)
+"compute_matter_cls" : False
+"simulate_galaxies" : False
+"simulate_gws" : False
+"compute_cls" : True
+"mcmc" : False
+
+# Parameters of the simulations
+"nside": 64
+"lmax": 191 # max multipole of the Cls (up to 3*nside-1)
+"bin_edges": [0.0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48, 0.54, 0.6] # list or .npy file with list
+"N_sim": 5000 # Number of simulations
+"bs" : 5 # bin size for the multipole bins
+"galaxy_map_type": "contrast" # galaxy maps used in the Cls: "contrast" or "counts"
+
+# Set paths of simulations (relative to storage)
+"storage": "." # the folder iara is run from
+"gdir": "/tutorial_output/galaxies" # path to galaxy simulations (from part 1)
+"bdir": "/tutorial_output/gws" # path to GW simulations (from part 2)
+"cls_dir": "/tutorial_output/cls" # path to cls
+
+# Galaxy survey
+"gal_dir": "/galaxy_inputs" # path to galaxy data files (only used to read a mask file)
+"mask": null # null = simple galactic cut (|b| > ~19.5 deg, 2/3 of the sky)
+"completeness": null # null = no selection function (otherwise the "_obs" galaxy maps are used)
+"Nphotoz": null # null = no photometric redshifts (otherwise the "_obs" galaxy maps are used)
+
+# Read by the code, but not used in a forecast
+"forecast" : True
+"insert_bright_sirens" : False
+"lvk_maps": "/lvk_maps"

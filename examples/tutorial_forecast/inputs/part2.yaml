@@ -1,0 +1,50 @@
+# Tutorial, part 2: simulating dark siren maps
+#
+# Uses the galaxy simulations of part 1 as hosts. Run from the tutorial folder
+# (storage = "." is the folder iara is run from):
+#   cd examples/tutorial_forecast
+#   mpirun -np 8 iara --run inputs/part2.yaml
+#
+# Pipeline: forecast catalog -> hosts drawn from the galaxy maps -> GW distance and sky errors -> GW maps (and their randoms).
+# The outputs are stored in tutorial_output/.
+# nside, bin_edges, N_sim, bgw and the cosmology must be the same as in part1.yaml.
+
+# Which steps to perform (all keys must be present)
+"compute_matter_cls" : False
+"simulate_galaxies" : False
+"simulate_gws" : True
+"compute_cls" : False
+"mcmc" : False
+
+# Parameters of the simulations
+"nside": 64
+"bin_edges": [0.0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48, 0.54, 0.6] # list or .npy file with list
+"N_sim": 5000 # Number of simulations
+"N_samples": 1000 # N of samples for GW position posterior
+"bgw" : 1 # if different from 1, the GW hosts are drawn from the "host" catalogs of part 1
+"include_lensing" : False # True needs the convergence maps of the galaxy simulations
+
+# Fiducial cosmology
+"H0": 67.36
+"omch2": 0.1200
+"ombh2": 0.02237
+"OM": 0.3153
+"As": 2.100e-9
+"ns": 0.9649
+"tau": 0.0544
+
+# Parameters of forecasts
+"forecast" : True
+"detector_forecast": "/inputs/lvkO5.txt" # forecast catalog (relative to storage), with columns z Dl ra dec err_Dl err_area90
+"forecast_distance_unit": "Gpc" # unit of Dl and err_Dl in lvkO5.txt
+"forecast_sky_selection": "ra_averaged" # the ra of the catalog is an Earth-fixed azimuth: only declinations are used
+"forecast_sel_dz": 0.5 # thickness of the redshift bins of the selection maps
+"forecast_sel_nside": 8 # nside of the event histograms of the selection maps
+"forecast_sel_smoothing_deg": 10.0 # Gaussian smoothing of the selection maps [deg]
+"forecast_err_nside": 4 # max nside of the sky pixels used to assign errors
+"forecast_save_samples": False # save the (Dl, lat, lon) samples of every event
+
+# Set paths of simulations (relative to storage)
+"storage": "." # the folder iara is run from
+"gdir": "/tutorial_output/galaxies" # path to galaxy simulations (from part 1)
+"bdir": "/tutorial_output/gws" # path to GW simulations
