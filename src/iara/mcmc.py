@@ -12,7 +12,6 @@ fiducial_defaults = {'w0': -1., 'wa': 0.} # fiducial values of the parameters th
 
 
 def mcmc(params):
-       
 
     # Initializing likelihood
     par = lk.global_parameters(params)
@@ -180,8 +179,6 @@ def plot_various_contours(params, chain_files, chain_labels, param_names, param_
     samples = []
     n = 0
     for filepath in chain_files:
-
-        print(filepath)
 
         readers.append(emcee.backends.HDFBackend(filepath, read_only=True)) 
         samp = readers[n].get_chain(flat=True)

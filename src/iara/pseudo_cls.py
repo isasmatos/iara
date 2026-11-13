@@ -39,7 +39,6 @@ def galaxy_mask(params, Nbins):
         mask_path = params["storage"]+params["gal_dir"]+params["mask"]
         print(mask_path)
         gmask = np.load(mask_path)
-        print(np.shape(gmask))
 
     return gmask
 
@@ -53,10 +52,7 @@ def pseudo_cls(params, rand=False):
     gdir = storage+params["gdir"]
     bdir = storage+params["bdir"]
     cls_dir = storage+params["cls_dir"]
-    gal_dir = storage+params["gal_dir"]
     forecast = params["forecast"]
-    lvk_maps_path = storage+params["lvk_maps"]
-    insert_bs = params["insert_bright_sirens"]
     galaxy_map_type = params.get("galaxy_map_type", "contrast") # galaxy maps: "contrast" or "counts"
     if galaxy_map_type not in ['contrast', 'counts']:
         raise ValueError(f"galaxy_map_type must be 'contrast' or 'counts', not {galaxy_map_type}")
@@ -81,8 +77,7 @@ def pseudo_cls(params, rand=False):
         bin_edges = np.load(bin_edges)
     else:
         bin_edges = np.array(bin_edges)
-      
-
+ 
     # Binning
     zb = bin_edges
     npix = hp.nside2npix(nside)
@@ -107,8 +102,6 @@ def pseudo_cls(params, rand=False):
     # Save time if mask is the same for all bins, i.e. shape(gmask) = (Npixels)
     redshift_independent_mask = (gmask.ndim == 1)
     print("redshift_independent_mask:", redshift_independent_mask)
-    #loop_range = 1 if redshift_independent_mask else Nbins
-
 
     for i in range(Nbins):
 
@@ -118,11 +111,6 @@ def pseudo_cls(params, rand=False):
         w_gb[i] = nmt.NmtWorkspace()
         w_gg[i].compute_coupling_matrix(gmask_i, gmask_i, b)
         w_gb[i].compute_coupling_matrix(gmask_i, bmask, b)
-
-    #if redshift_independent_mask:
-    #    for i in range(1, Nbins):
-    #        w_gg[i] = copy.deepcopy(w_gg[0])
-    #        w_gb[i] = copy.deepcopy(w_gb[0])
 
     print("Computed coupling matrices")
 
@@ -152,45 +140,7 @@ def pseudo_cls(params, rand=False):
             # Get bbh count map from simulations
             bh_count_map = np.load(f'{bdir}/bbh_count_map{k+1}.npy')
             bh_count_map = bh_count_map[:Nbins]
-
-            # For analysing just a subset of GW events
-            #bh_count_map = np.zeros(shape=(Nbins, hp.nside2npix(nside)))
-            #list_ev = []
-            #for file in os.listdir(lvk_maps_path):
-
-            #    if 'GW' in file:
-            #        if '190814' in file: # For analysing GW190814 only - COMMENT THIS OTHERWISE
-            #            list_ev.append(file)
-
-            #for file in os.listdir(f'{bdir}/sim{k+1}'):
-
-                # If we want to exclude simulations where GW190814 is inside the mask
-                #if '190814' in file:
-                #    map190814 = np.load(f'{bdir}/sim{k+1}/{file}')
-                #    m1 = np.sum(map190814*gmask)
-
-                # If we want to exclude simulations where GW170814 is inside the mask
-                #if '170814' in file:
-                #    map170814 = np.load(f'{bdir}/sim{k+1}/{file}')
-                #    m2 = np.sum(map170814*gmask)
-                #else:
-                #    m2=1
-
-                #if any([list_ev[ev][:9] in file for ev in range(len(list_ev))]):
-                #    print(file)                
-                #    map = np.load(f'{bdir}/sim{k+1}/{file}')
-                #    bh_count_map += map
-
-            # Reject if more than 5% masked GW190814
-            #if ((m1 < 0.95) or (m2 < 0.95)):
-            #    continue
-
-            #if insert_bs == True:
-                # Include bright siren
-            #    bs_count_map = np.load(f'{bdir}/bs_count_map{k+1}.npy')
-            #    bh_count_map += bs_count_map
             
-        print('computing alms')
         start=time()
         for i in range(Nbins):
 
@@ -203,24 +153,14 @@ def pseudo_cls(params, rand=False):
 
             alm_g[i] = hp.map2alm(map_masked,lmax=lmax_cls)
             alm_b[i] = hp.map2alm(bh_count_map[i], lmax=lmax_cls) 
-      
-        end=time()
-        print(-start+end,'  seconds')
-
-        print('computing cls')
-        start=time()
-        
-        # healpix assumes cls are symmetric, but the cross-cls are not
+          
+        # Healpix assumes cls are symmetric, but the cross-cls are not
         upper_cls_gb = hp.alm2cl(alm_g,alm_b, lmax=lmax_cls) # shape (N*(N+1)/2, 200)
         lower_cls_gb = hp.alm2cl(alm_b,alm_g, lmax=lmax_cls)
         cls_gg = hp.alm2cl(alm_g, lmax=lmax_cls)
         cls_bb = hp.alm2cl(alm_b, lmax=lmax_cls)
-        end=time()
-        print(-start+end,'  seconds')
 
-        # Inverting the pseudo-cls
-        print('inverting pseudo-cls')
-            
+        # Inverting the pseudo-cls            
         idx = 0
         for n in range(Nbins):
             for i in range(Nbins - n):
@@ -245,7 +185,6 @@ def cl_means(params, rand=False):
     
     storage = params["storage"]
     cls_dir = storage+params["cls_dir"]
-    forecast = params["forecast"]
 
     if rand == True:
         cls_dir += '_rand'
@@ -293,8 +232,6 @@ def cl_means(params, rand=False):
     np.save(f'{cls_dir}/Cl_gg_mean.npy', res_gg)
     np.save(f'{cls_dir}/Cl_gb_mean.npy', res_gb)
     np.save(f'{cls_dir}/Cl_bb_mean.npy', res_bb)
-
-    #return res_gg,res_bb,res_gb
 
 
 def legendre_integral(theta_min, theta_max, l_max, lbvec):

@@ -34,3 +34,4 @@ psds/
 .DS_Store
 docs/_build/
 *.egg-info/
+docs/_autosummary/

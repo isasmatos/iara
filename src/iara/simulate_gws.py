@@ -107,7 +107,7 @@ def lvk_move(storage, all_samples, nside, bh_pix_dict, dl_bins, bdir, sim):
     all_samples : dict {map_event_name: {'dl', 'ra', 'dec'}} from _load_event_samples.
     bh_pix_dict : dict {map_event_name: host_pixel}, built per simulation in sim_gws.
     """
-    print("Moving LVK events to galaxy positions...")
+
     Nbins = len(dl_bins) - 1
     bbh_map = np.zeros(shape=(Nbins, hp.nside2npix(nside)))
 
@@ -116,7 +116,6 @@ def lvk_move(storage, all_samples, nside, bh_pix_dict, dl_bins, bdir, sim):
         if event_key not in bh_pix_dict:
             continue
 
-        print("event_key=", event_key)
         bbh_map_indv = np.zeros(shape=(Nbins, hp.nside2npix(nside)))
 
         dl_samples = samp['dl'].copy()
@@ -302,14 +301,13 @@ def sim_gws(params, rand=False):
         for i in range(Nbins):
             events = np.where(bin_index == i)[0]
             if len(events) == 0:
-                print(f"No events in bin {i}")
+                warnings.warn(f"No events in bin {i}", category=UserWarning, stacklevel=2)
                 continue
             if params['multiple_surveys'] == True:
                 Bh_pix = np.array([
                     sample_hosts(gal_count_map[i] * footprint_index[ev].astype(float), 1, nside)[0]
                     for ev in events
                 ])
-                print(Bh_pix)
             else:
                 Bh_pix = sample_hosts(gal_count_map[i], len(events), nside)
             for j, ev in enumerate(events):

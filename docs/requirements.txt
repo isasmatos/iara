@@ -1,1 +1,8 @@
 sphinx
+numpy
+scipy
+matplotlib
+pandas
+h5py
+pyyaml
+tqdm

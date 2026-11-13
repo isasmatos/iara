@@ -48,6 +48,8 @@ def main(argv=None):
     with open(params_file) as stream:
         params = yaml.safe_load(stream)
 
+    # Print all settings
+    print(params)
 
     # ----- Compute matter Cls -------------------------------------
 
@@ -71,6 +73,7 @@ def main(argv=None):
 
         print("Simulating galaxies...")
         sim_gal(params)
+        print("Simulating galaxy randoms...")
         sim_gal(params, rand=True)
 
         if params["Nphotoz"] is not None or params["completeness"] is not None:
@@ -85,10 +88,14 @@ def main(argv=None):
     if params["simulate_gws"] == True:
 
         if params["forecast"] == True:
+            print("Simulating GWs...")
             sim_bbh(params)
+            print("Simulating GW randoms...")
             sim_bbh(params, rand=True)
         else:
+            print("Simulating GWs...")
             sim_gws(params)
+            print("Simulating GW randoms...")
             sim_gws(params, rand=True)
 
 
@@ -96,7 +103,9 @@ def main(argv=None):
 
     if params["compute_cls"] == True:
 
+        print("Computing Cls...")
         pseudo_cls(params)
+        print("Computing Cls for randoms...")
         pseudo_cls(params, rand=True)
 
         # Synchronize all ranks: wait until everyone is done
@@ -114,6 +123,7 @@ def main(argv=None):
     if params["mcmc"] == True:
         if rank == 0:
 
+            print("Running MCMC...")
             mcmc(params)
             plot_contours(params)
 

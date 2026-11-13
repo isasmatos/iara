@@ -181,7 +181,6 @@ def equations(p,z, OM, s8):
 
 def mu_ln(z, OM, s8):
   r_sol = fsolve(equations,np.array([1]),args=(z, OM, s8))[0]
-  #print(r_sol)
   return np.abs(sig_ln(z, OM, s8)/r_sol)/4 #still not sure
 
 def sig_gau2(z, OM, s8):
@@ -604,7 +603,6 @@ class gw_forecast(object):
             print(f"Starting simulation {k+1}")
             gal_count_map = np.load(f'{self.gdir}/gal_count_map{k+1}.npy')
             kappas = self._load_kappa(k+1) if self.lensing == True else [None]*self.Nbins
-            print("Loaded galaxy count map")
 
             hosts_map = np.zeros((self.Nbins, npix))
             bbh_count_map = np.zeros((self.Nbins, npix))

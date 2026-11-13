@@ -39,3 +39,4 @@ Getting started
 
    usage
    parameters
+   api
