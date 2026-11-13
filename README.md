@@ -4,15 +4,7 @@
   <img src="docs/logo.png" alt="iara logo" width="200">
 </p>
 
-IARA (*Inference from Angular cross-correlations for Redshift-peak Analysis*) is a code for cosmological parameter inference from the angular cross-correlations of localized gravitational-wave sources and galaxies. It implements the Peak Sirens method.
-
-### Documentation
-
-The documentation is hosted on Read the Docs: **https://iara.readthedocs.io**. It covers the installation, the usage, every input parameter with its default value, and the API reference of all modules. Its sources are in the `docs` folder (configuration in `.readthedocs.yaml`). To build it locally, with Sphinx installed (see `docs/requirements.txt`):
-
-    cd docs && make html
-
-and open `docs/_build/html/index.html` in a browser.
+IARA (*Inference from Angular cross-correlations for Redshift-peak Analysis*) is a code for cosmological parameter inference from the angular cross-correlations of localized gravitational-wave sources and galaxies. It implements the Peak Sirens method. For more information, see the full [documentation](https://iara.readthedocs.io).
 
 ### Installation
 
